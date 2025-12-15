@@ -17,6 +17,7 @@ let authToken = null;
 let tokenExpiry = null;
 
 // vROPS API'ye authentication yapan fonksiyon
+// Burada login sürecini ve token kullanımını backend loglarına yazıyoruz
 async function authenticateVrops() {
   try {
     const host = process.env.VROPS_HOST;
@@ -31,8 +32,18 @@ async function authenticateVrops() {
 
     // Token hala geçerliyse yeniden authenticate olma
     if (authToken && tokenExpiry && Date.now() < tokenExpiry) {
+      console.log('[vROPS AUTH] Mevcut token kullanılacak (cache).', {
+        host,
+        username,
+        tokenExpiresAt: new Date(tokenExpiry).toISOString()
+      });
       return authToken;
     }
+
+    console.log('[vROPS AUTH] Yeni token alınacak.', {
+      host,
+      username
+    });
 
     // vROPS'a authentication isteği gönder
     const authUrl = `${protocol}://${host}:${port}/suite-api/api/auth/token/acquire`;
@@ -58,6 +69,12 @@ async function authenticateVrops() {
     // Token'ı sakla (genellikle 30 dakika geçerli)
     authToken = response.data.token;
     tokenExpiry = Date.now() + (30 * 60 * 1000); // 30 dakika
+
+    console.log('[vROPS AUTH] Yeni token alındı.', {
+      host,
+      username,
+      tokenExpiresAt: new Date(tokenExpiry).toISOString()
+    });
 
     return authToken;
 

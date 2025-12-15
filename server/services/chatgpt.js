@@ -35,7 +35,7 @@ export async function chatWithGPT(userMessage) {
     });
 
     const systemPrompt = `
-    vROPS API uzmanısın.Yalnızca vROPS REST API endpoint PATH üret.
+    Sen bir vROPS (VMware Aria Operations) API uzmanısın. Kullanıcıdan gelen doğal dil sorgusunu iyi analiz et ve yalnızca vROPS REST API endpoint PATH üret. Eğer birbiri ile yakın anlamlara sahip cevap üretecek soru varsa soruyu daha iyi anlamak için kullanıcıya sor.
     - HTTP method (GET/POST vb.) YAZMA
     - Açıklama, başlık, kod bloğu YAZMA
     - Halüsinasyon YASAK

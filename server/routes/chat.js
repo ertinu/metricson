@@ -17,10 +17,17 @@ router.post('/message', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // Kullanıcıdan gelen soruyu backend loglarına yaz
-    // Bu sayede hangi soruya karşılık nasıl cevap üretildiğini loglardan takip edebilirsin
+    // Kullanıcıdan gelen soruyu ve vROPS bağlantı parametrelerini backend loglarına yaz
+    // Bu sayede hangi soruya karşılık nasıl cevap üretildiğini ve hangi vROPS ortamına gittiğini loglardan takip edebilirsin
     console.log('--- CHAT REQUEST START ---');
     console.log('Kullanıcı sorusu (userMessage):', message);
+    console.log('vROPS bağlantı bilgileri (env):', {
+      host: process.env.VROPS_HOST,
+      port: process.env.VROPS_PORT,
+      protocol: process.env.VROPS_PROTOCOL,
+      username: process.env.VROPS_USERNAME
+      // Parolayı güvenlik nedeniyle loglamıyoruz
+    });
 
     // 1) ChatGPT'ye kullanıcı sorusunu gönder (sohbet / açıklama için)
     const gptResponse = await chatWithGPT(message);
