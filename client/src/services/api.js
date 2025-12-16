@@ -10,9 +10,13 @@ const api = axios.create({
 });
 
 // Chat mesajı gönderme fonksiyonu
-export async function sendMessage(message) {
+export async function sendMessage(message, resourceId = null) {
   try {
-    const response = await api.post('/chat/message', { message });
+    const payload = { message };
+    if (resourceId) {
+      payload.resourceId = resourceId;
+    }
+    const response = await api.post('/chat/message', payload);
     return response.data;
   } catch (error) {
     console.error('API Error:', error);
@@ -27,6 +31,17 @@ export async function testVropsConnection() {
     return response.data;
   } catch (error) {
     console.error('vROPS Test Error:', error);
+    throw error;
+  }
+}
+
+// Direkt vROPS API endpoint'ine istek at
+export async function executeVropsDirectRequest(endpoint) {
+  try {
+    const response = await api.post('/vrops/direct', { endpoint });
+    return response.data;
+  } catch (error) {
+    console.error('vROPS Direct Request Error:', error);
     throw error;
   }
 }

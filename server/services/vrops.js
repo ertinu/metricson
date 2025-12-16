@@ -85,6 +85,37 @@ async function authenticateVrops() {
 }
 
 // vROPS API request'ini çalıştıran ana fonksiyon
+/**
+ * Resource bilgisini çeker (resourceKindKey için)
+ * @param {String} resourceId - Resource ID
+ * @returns {Object} Resource bilgisi
+ */
+export async function getResourceInfo(resourceId) {
+  try {
+    const token = await authenticateVrops();
+    const host = process.env.VROPS_HOST;
+    const port = process.env.VROPS_PORT || '443';
+    const protocol = process.env.VROPS_PROTOCOL || 'https';
+    
+    const url = `${protocol}://${host}:${port}/suite-api/api/resources/${resourceId}`;
+    
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `vRealizeOpsToken ${token}`,
+        'Content-Type': 'application/json'
+      },
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false
+      })
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Resource info error:', error.response?.data || error.message);
+    throw new Error(`Resource bilgisi alınamadı: ${error.response?.data?.message || error.message}`);
+  }
+}
+
 export async function executeVropsRequest(requestConfig) {
   try {
     const host = process.env.VROPS_HOST;

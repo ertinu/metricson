@@ -41,7 +41,17 @@ export async function chatWithGPT(userMessage) {
     - Halüsinasyon YASAK
     - Sadece /suite-api/... ile başlayan tek satır döndür
     - URL (https://, host) YOK
-    Anlamazsan kısa bir soru sor, endpoint üretme. Tarih gerekiyorsa epoch ms (UTC) kullan. Şu an: ${currentDateTimeTr}
+    - Eğer kullanıcı, belirtilen resourcenin kullanılabilecek hangi metrikleri olduğunu sorduğunda "statkeys?resourceId={id}" endointini üret.
+    - Distributed switch (vds) için resourceKindKey: VmwareDistributedVirtualSwitch
+    - Distributed port grup için resourceKindKey: DistributedVirtualPortgroup
+    - VM folder için resourceKindKey : VMFolder
+    Anlamazsan kısa bir soru sor, endpoint üretme. 
+    - Eğer tarih gerekiyorsa epoch milliseconds (UTC) kullan
+    - Üretilen begin ve end değerleri ASLA şu anki zamandan (UTC) ileri olamaz
+    - end = now(UTC), begin < end olacak şekilde üret
+    - soruyu anlamazsan kısa bir soru sor, endpoint üretme.
+  
+    Şu anki zaman (UTC epoch ms): ${Date.now()}
     `;
     // OpenAI API'ye istek gönder
     const response = await axios.post(
@@ -75,6 +85,66 @@ export async function chatWithGPT(userMessage) {
   } catch (error) {
     console.error('ChatGPT API Error:', error.response?.data || error.message);
     throw new Error(`ChatGPT API hatası: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
+/**
+ * Metrik açıklaması için ChatGPT'ye istek gönderen fonksiyon
+ * Bu fonksiyon endpoint üretmez, direkt açıklama yapar
+ * @param {String} userMessage - Kullanıcı mesajı (örn: "Resource tipi yani, resourceKind {VirtualMachine} olan Bu vROPS metrik ne işe yarar: mem|workload. Kısa ve öz bir açıklama yap, Türkçe olarak.")
+ * @returns {String} ChatGPT'den gelen açıklama
+ */
+export async function getMetricDescriptionFromGPT(userMessage) {
+  try {
+    const apiKey = process.env.CHATGPT_API_KEY;
+    const model = process.env.CHATGPT_MODEL || 'gpt-4';
+    const baseURL = process.env.CHATGPT_BASE_URL || 'https://api.openai.com/v1';
+
+    if (!apiKey) {
+      throw new Error('CHATGPT_API_KEY is not configured');
+    }
+
+    // Metrik açıklaması için özel sistem prompt'u - Endpoint üretmez, direkt açıklama yapar
+    const systemPrompt = `
+    Sen bir vROPS (VMware Aria Operations) metrik uzmanısın. Kullanıcıya metriklerin ne işe yaradığını kısa ve öz bir şekilde açıklayacaksın.
+    - Türkçe cevap ver
+    - Teknik terimleri açıkla
+    - Kısa ve anlaşılır ol
+    - Endpoint üretme, sadece açıklama yap
+    `;
+
+    // OpenAI API'ye istek gönder
+    const response = await axios.post(
+      `${baseURL}/chat/completions`,
+      {
+        model: model,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userMessage
+          }
+        ],
+        max_completion_tokens: 500
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // ChatGPT'den gelen cevabı döndür
+    const gptMessage = response.data.choices[0].message.content;
+    return gptMessage;
+
+  } catch (error) {
+    console.error('ChatGPT Metric Description API Error:', error.response?.data || error.message);
+    throw new Error(`Metrik açıklaması alınırken hata: ${error.response?.data?.error?.message || error.message}`);
   }
 }
 

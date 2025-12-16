@@ -3,15 +3,16 @@
 // 1) Kullanıcı sadece sohbet / açıklama istiyorsa -> Sadece ChatGPT cevabı döner, vROPS çağrısı yapılmaz
 // 2) Kullanıcı metin içinde bir vROPS REST API isteği (GET/POST/...) yazdıysa -> Bu istek vROPS üzerinde çalıştırılır ve response ekrana yazılır
 import express from 'express';
-import { chatWithGPT } from '../services/chatgpt.js';
-import { executeVropsRequest } from '../services/vrops.js';
+import { chatWithGPT, getMetricDescriptionFromGPT } from '../services/chatgpt.js';
+import { executeVropsRequest, getResourceInfo } from '../services/vrops.js';
+import { parseVropsResponse, detectResponseType } from '../services/vropsParser.js';
 
 const router = express.Router();
 
 // Ana chat endpoint'i - Kullanıcı sorusunu alır, ChatGPT'ye gönderir, gerekiyorsa vROPS'ta çalıştırır
 router.post('/message', async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, resourceId } = req.body; // resourceId parametresini al
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
@@ -29,8 +30,35 @@ router.post('/message', async (req, res) => {
       // Parolayı güvenlik nedeniyle loglamıyoruz
     });
 
-    // 1) ChatGPT'ye kullanıcı sorusunu gönder (sohbet / açıklama için)
-    const gptResponse = await chatWithGPT(message);
+    // Eğer resourceId varsa, resource bilgisini çek ve prompt'a ekle
+    let resourceKindKey = null;
+    if (resourceId) {
+      try {
+        const resourceInfo = await getResourceInfo(resourceId);
+        resourceKindKey = resourceInfo?.resourceKey?.resourceKindKey || null;
+        console.log('Resource tipi (resourceKindKey):', resourceKindKey);
+      } catch (error) {
+        console.error('Resource bilgisi alınamadı:', error.message);
+        // Hata olsa bile devam et
+      }
+    }
+
+    // Eğer mesaj "ne işe yarar" içeriyorsa ve resourceId varsa, metrik açıklaması için özel fonksiyonu kullan
+    const isMetricDescriptionRequest = message.toLowerCase().includes('ne işe yarar') && resourceId;
+    
+    let gptResponse;
+    if (isMetricDescriptionRequest) {
+      // Metrik açıklaması için özel format: "Resource tipi yani, resourceKind {VirtualMachine} olan Bu vROPS metrik ne işe yarar: mem|workload. Kısa ve öz bir açıklama yap, Türkçe olarak."
+      let enhancedMessage = message;
+      if (resourceKindKey) {
+        enhancedMessage = `Resource tipi yani, resourceKind {${resourceKindKey}} olan ${message}`;
+      }
+      console.log('Metrik açıklaması için enhanced message:', enhancedMessage);
+      gptResponse = await getMetricDescriptionFromGPT(enhancedMessage);
+    } else {
+      // Normal chat için standart fonksiyonu kullan
+      gptResponse = await chatWithGPT(message);
+    }
 
     // ChatGPT'den gelen cevabı backend loglarına yaz
     console.log('ChatGPT cevabı (gptResponse):', gptResponse);
@@ -43,11 +71,23 @@ router.post('/message', async (req, res) => {
     let vropsResult = null;
     let vropsError = null;
     let vropsExecuted = false; // Bu istek için gerçekten vROPS çağrısı yapıldı mı bilgisini tutar
+    let parsedData = null; // Parse edilmiş veri
+    let dataType = null; // Veri tipi (alerts, metrics, vs.)
     
     if (vropsRequest) {
       try {
         vropsResult = await executeVropsRequest(vropsRequest);
         vropsExecuted = true;
+        
+        // vROPS response'unu parse et
+        dataType = detectResponseType(vropsRequest.endpoint);
+        parsedData = parseVropsResponse(vropsResult.data, dataType, vropsRequest);
+        
+        console.log('Parse edilmiş veri tipi:', dataType);
+        console.log('Parse edilmiş veri özeti:', {
+          totalCount: parsedData.totalCount || parsedData.alerts?.length || 'N/A',
+          dataType: dataType
+        });
       } catch (vropsErr) {
         // vROPS hatası olsa bile ChatGPT cevabını döndür
         vropsError = vropsErr.message;
@@ -62,13 +102,26 @@ router.post('/message', async (req, res) => {
     }
     console.log('--- CHAT REQUEST END ---');
 
+    // displayType belirleme - resourceDetail için 'card' kullan
+    let displayType = null;
+    if (parsedData) {
+      if (dataType === 'resourceDetail') {
+        displayType = 'card';
+      } else {
+        displayType = 'table';
+      }
+    }
+
     // Sonucu kullanıcıya döndür (ChatGPT cevabı her zaman döner)
     res.json({
       success: true,
       userMessage: message,
       gptResponse: gptResponse,
       vropsRequest: vropsRequest,
-      vropsResult: vropsResult,
+      vropsResult: vropsResult, // Ham data (debug için)
+      parsedData: parsedData, // Parse edilmiş, temiz data
+      dataType: dataType, // 'alerts', 'metrics', vs.
+      displayType: displayType, // Frontend'e nasıl göstereceğini söyle ('table' veya 'card')
       vropsError: vropsError,
       vropsExecuted: vropsExecuted
     });
