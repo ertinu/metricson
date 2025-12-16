@@ -2,7 +2,7 @@
 // Bu komponent, sağ tarafta ChatGPT benzeri bir layout oluşturacak şekilde tasarlanmıştır:
 // Üstte scroll edilebilen mesaj alanı, altta sabit prompt input bölümü yer alır.
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { sendMessage, executeVropsDirectRequest } from '../services/api';
+import { sendMessage, executeVropsDirectRequest, analyzePerformance } from '../services/api';
 import VropsDataTable from './VropsDataTable';
 import AlertFilters from './filters/AlertFilters';
 import MetricTable from './MetricTable';
@@ -10,6 +10,7 @@ import MetricChart from './MetricChart';
 import LatestStatsTable from './LatestStatsTable';
 import StatKeysTable from './StatKeysTable';
 import ResourceLinkModal from './ResourceLinkModal';
+import PerformanceAnalysisView from './PerformanceAnalysisView';
 
 function ChatInterface() {
   // State yönetimi - Mesajlar ve yükleme durumu
@@ -30,6 +31,13 @@ function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
+  // Performans analizi gerektiren soru mu kontrol et
+  const isPerformanceAnalysisQuestion = (message) => {
+    const lowerMessage = message.toLowerCase();
+    const performanceKeywords = ['yavaş', 'slow', 'finding', 'neden', 'sebep', 'performance', 'dondu', 'freeze', 'neden yavaş', 'neden dondu'];
+    return performanceKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
+
   // Mesaj gönderme fonksiyonu
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -49,7 +57,27 @@ function ChatInterface() {
     setIsLoading(true);
 
     try {
-      // Backend'e mesaj gönder
+      // Performans analizi gerektiren soru mu kontrol et
+      if (isPerformanceAnalysisQuestion(userMessage)) {
+        // Performans analizi endpoint'ine yönlendir
+        console.log('Performance analysis detected, calling analyzePerformance...');
+        const analysisResponse = await analyzePerformance(userMessage);
+        console.log('Performance analysis response received:', analysisResponse);
+        
+        const systemMessage = {
+          id: Date.now() + 1,
+          type: 'system',
+          content: `Performans analizi tamamlandı. ${analysisResponse.vmName || 'VM'} için detaylı analiz aşağıda gösteriliyor.`,
+          timestamp: new Date(),
+          performanceAnalysis: analysisResponse, // Performans analizi verisi
+          dataType: 'performanceAnalysis'
+        };
+        console.log('System message created:', systemMessage);
+        setMessages(prev => [...prev, systemMessage]);
+        return;
+      }
+
+      // Normal chat akışı - Backend'e mesaj gönder
       const response = await sendMessage(userMessage);
       
       // Eğer parse edilmiş vROPS verisi varsa, mesaj objesine ekle
@@ -305,7 +333,7 @@ function ChatInterface() {
                 <MessageBubble message={message} />
                 
                 {/* Bu mesajın parsedData'sını hemen altında göster */}
-                {message.parsedData && message.dataType && (
+                {((message.parsedData && message.dataType) || (message.performanceAnalysis && message.dataType === 'performanceAnalysis')) && (
                   <>
                     {message.dataType === 'alerts' && message.parsedData.alerts && (
                       <div className="mt-6 border-t border-gray-200 pt-6">
@@ -463,6 +491,20 @@ function ChatInterface() {
 
                         {/* Properties View */}
                         <PropertiesView data={message.parsedData} />
+                      </div>
+                    )}
+
+                    {message.dataType === 'performanceAnalysis' && message.performanceAnalysis && (
+                      <div className="mt-6 border-t border-gray-200 pt-6">
+                        <div className="mb-4">
+                          <h3 className="text-lg font-semibold text-gray-800 mb-2">Performans Analizi</h3>
+                          <p className="text-sm text-gray-600">
+                            {message.performanceAnalysis.vmName || 'VM'} için detaylı performans analizi
+                          </p>
+                        </div>
+
+                        {/* Performance Analysis View */}
+                        <PerformanceAnalysisView data={message.performanceAnalysis} />
                       </div>
                     )}
                   </>

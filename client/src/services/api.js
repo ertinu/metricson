@@ -46,3 +46,18 @@ export async function executeVropsDirectRequest(endpoint) {
   }
 }
 
+// Performans analizi isteği
+export async function analyzePerformance(message, vmName = null) {
+  try {
+    const payload = { message };
+    if (vmName) {
+      payload.vmName = vmName;
+    }
+    const response = await api.post('/chat/analyze-performance', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Performance Analysis Error:', error);
+    throw error;
+  }
+}
+

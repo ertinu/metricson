@@ -155,8 +155,25 @@ export async function executeVropsRequest(requestConfig) {
       axiosConfig.data = requestConfig.body;
     }
 
+    // API istek parametrelerini logla
+    console.log('--- vROPS API REQUEST ---');
+    console.log('Method:', axiosConfig.method);
+    console.log('URL:', axiosConfig.url);
+    console.log('Params:', JSON.stringify(axiosConfig.params || {}, null, 2));
+    console.log('Body:', JSON.stringify(axiosConfig.data || {}, null, 2));
+    console.log('Headers:', JSON.stringify({
+      'Authorization': axiosConfig.headers.Authorization ? 'vRealizeOpsToken [REDACTED]' : 'None',
+      'Content-Type': axiosConfig.headers['Content-Type'],
+      'Accept': axiosConfig.headers.Accept
+    }, null, 2));
+
     // vROPS API'ye istek gönder
     const response = await axios(axiosConfig);
+    
+    console.log('--- vROPS API RESPONSE ---');
+    console.log('Status:', response.status);
+    console.log('Response Data Keys:', response.data ? Object.keys(response.data) : 'No data');
+    console.log('--- vROPS API REQUEST END ---');
 
     return {
       success: true,

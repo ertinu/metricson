@@ -3,9 +3,10 @@
 // 1) Kullanıcı sadece sohbet / açıklama istiyorsa -> Sadece ChatGPT cevabı döner, vROPS çağrısı yapılmaz
 // 2) Kullanıcı metin içinde bir vROPS REST API isteği (GET/POST/...) yazdıysa -> Bu istek vROPS üzerinde çalıştırılır ve response ekrana yazılır
 import express from 'express';
-import { chatWithGPT, getMetricDescriptionFromGPT } from '../services/chatgpt.js';
+import { chatWithGPT, getMetricDescriptionFromGPT, analyzePerformanceFromGPT } from '../services/chatgpt.js';
 import { executeVropsRequest, getResourceInfo } from '../services/vrops.js';
 import { parseVropsResponse, detectResponseType } from '../services/vropsParser.js';
+import { findVMByName, collectAllVMData, formatDataForGPT } from '../services/performanceAnalyzer.js';
 
 const router = express.Router();
 
@@ -193,6 +194,148 @@ function buildVropsRequestFromGptPath(gptResponse) {
     body: {}
   };
 }
+
+/**
+ * Performans analizi endpoint'i
+ * VM ismini tespit eder, verilerini toplar ve ChatGPT'ye analiz için gönderir
+ * POST /api/chat/analyze-performance
+ * Body: { message: "x isimli VM neden yavaş?", vmName?: "optional" }
+ */
+router.post('/analyze-performance', async (req, res) => {
+  try {
+    const { message, vmName } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    console.log('--- PERFORMANCE ANALYSIS REQUEST START ---');
+    console.log('Kullanıcı sorusu:', message);
+    console.log('VM İsmi (opsiyonel):', vmName);
+
+    // UUID formatını kontrol et (örn: "2aba63ec-52aa-481c-865f-a5089301d218")
+    const uuidPattern = /([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
+    const uuidMatch = message.match(uuidPattern);
+    
+    let resourceId = null;
+    let targetVMName = vmName;
+
+    // Eğer mesajda UUID varsa, direkt resource ID olarak kullan
+    if (uuidMatch) {
+      resourceId = uuidMatch[1];
+      console.log('UUID formatında Resource ID tespit edildi:', resourceId);
+      
+      // VM bilgisini çek (isim için)
+      try {
+        const vmInfo = await getResourceInfo(resourceId);
+        targetVMName = vmInfo?.resourceKey?.name || resourceId;
+        console.log('VM bilgisi çekildi, VM ismi:', targetVMName);
+      } catch (error) {
+        console.warn('VM bilgisi çekilemedi, UUID kullanılacak:', error.message);
+        targetVMName = resourceId;
+      }
+    } else {
+      // VM ismini çıkar (kullanıcıdan gelen vmName veya mesajdan)
+      if (!targetVMName) {
+        // ChatGPT'ye VM ismini çıkarması için sor
+        try {
+          const extractPrompt = `Aşağıdaki soruda VM (sanal sunucu) ismini çıkar. Sadece VM ismini döndür, başka bir şey yazma. Eğer VM ismi yoksa "BULUNAMADI" yaz.
+        
+Soru: ${message}`;
+          
+          const extractedName = await chatWithGPT(extractPrompt);
+          targetVMName = extractedName.trim();
+          
+          // "BULUNAMADI" kontrolü
+          if (targetVMName === 'BULUNAMADI' || !targetVMName || targetVMName.length < 2) {
+            return res.status(400).json({ 
+              error: 'VM ismi tespit edilemedi. Lütfen sorunuzda VM ismini belirtin (örn: "test-vm-01 isimli VM neden yavaş?")' 
+            });
+          }
+        } catch (error) {
+          console.error('VM ismi çıkarılamadı:', error.message);
+          return res.status(400).json({ 
+            error: 'VM ismi tespit edilemedi. Lütfen sorunuzda VM ismini belirtin.' 
+          });
+        }
+      }
+
+      console.log('Tespit edilen VM ismi:', targetVMName);
+
+      // VM ID'yi bul (isimden)
+      try {
+        resourceId = await findVMByName(targetVMName);
+        if (!resourceId) {
+          return res.status(404).json({ 
+            error: `VM bulunamadı: ${targetVMName}. Lütfen VM ismini kontrol edin.` 
+          });
+        }
+        console.log('VM Resource ID (isimden bulundu):', resourceId);
+      } catch (error) {
+        console.error('VM bulunamadı:', error.message);
+        return res.status(404).json({ 
+          error: `VM bulunamadı: ${error.message}` 
+        });
+      }
+    }
+
+    // VM verilerini topla (properties + performance stats)
+    let vmData;
+    try {
+      console.log('VM verileri toplanıyor...');
+      vmData = await collectAllVMData(resourceId, targetVMName);
+      console.log('VM verileri toplandı:', {
+        vmName: vmData.vmName,
+        vmId: vmData.vmId,
+        hasConfiguration: !!vmData.configuration,
+        hasPerformance: !!vmData.performance
+      });
+    } catch (error) {
+      console.error('VM verileri toplanamadı:', error.message);
+      return res.status(500).json({ 
+        error: `VM verileri toplanamadı: ${error.message}` 
+      });
+    }
+
+    // ChatGPT'ye gönderilecek formata dönüştür
+    const formattedData = formatDataForGPT(vmData);
+    console.log('Formatted data for GPT:', JSON.stringify(formattedData, null, 2));
+
+    // ChatGPT'ye analiz için gönder
+    let analysis;
+    try {
+      console.log('ChatGPT analizi başlatılıyor...');
+      console.log('User question:', message);
+      analysis = await analyzePerformanceFromGPT(message, formattedData);
+      console.log('ChatGPT analizi tamamlandı');
+      console.log('Analysis length:', analysis?.length || 0, 'characters');
+    } catch (error) {
+      console.error('ChatGPT analizi başarısız:', error.message);
+      return res.status(500).json({ 
+        error: `Performans analizi yapılamadı: ${error.message}` 
+      });
+    }
+
+    console.log('--- PERFORMANCE ANALYSIS REQUEST END ---');
+
+    // Sonucu döndür
+    res.json({
+      success: true,
+      vmId: resourceId,
+      vmName: targetVMName,
+      analysis: analysis,
+      collectedData: vmData,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Performance analysis error:', error);
+    res.status(500).json({ 
+      error: 'An error occurred while processing performance analysis',
+      details: error.message 
+    });
+  }
+});
 
 export default router;
 
