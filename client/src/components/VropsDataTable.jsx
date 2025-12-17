@@ -80,31 +80,31 @@ function VropsDataTable({ data, dataType }) {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th 
-                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                    className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                     onClick={() => handleSort('alertDefinitionName')}
                   >
                     Alert Adı {sortConfig.key === 'alertDefinitionName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
-                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                    className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                     onClick={() => handleSort('alertLevel')}
                   >
                     Seviye {sortConfig.key === 'alertLevel' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
-                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                    className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                     onClick={() => handleSort('status')}
                   >
                     Durum {sortConfig.key === 'status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
-                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                    className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                     onClick={() => handleSort('startTimeUTC')}
                   >
                     Başlangıç {sortConfig.key === 'startTimeUTC' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                   </th>
                   <th 
-                    className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                    className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                     onClick={() => handleSort('alertImpact')}
                   >
                     Etki {sortConfig.key === 'alertImpact' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -114,9 +114,9 @@ function VropsDataTable({ data, dataType }) {
               <tbody className="divide-y divide-gray-200">
                 {paginatedData.map((alert, index) => (
                   <tr key={alert.alertId || index} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{alert.alertDefinitionName}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                    <td className="px-2 py-1.5 text-xs text-gray-900">{alert.alertDefinitionName}</td>
+                    <td className="px-2 py-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
                         alert.alertLevel === 'CRITICAL' ? 'bg-red-100 text-red-800 border border-red-200' :
                         alert.alertLevel === 'IMMEDIATE' ? 'bg-orange-100 text-orange-800 border border-orange-200' :
                         alert.alertLevel === 'WARNING' ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' :
@@ -125,8 +125,8 @@ function VropsDataTable({ data, dataType }) {
                         {alert.alertLevel}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs ${
+                    <td className="px-2 py-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${
                         alert.status === 'ACTIVE' ? 'bg-green-100 text-green-800 border border-green-200' :
                         alert.status === 'CANCELED' ? 'bg-gray-100 text-gray-800 border border-gray-200' :
                         'bg-blue-100 text-blue-800 border border-blue-200'
@@ -134,10 +134,10 @@ function VropsDataTable({ data, dataType }) {
                         {alert.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-2 py-1.5 text-xs text-gray-600">
                       {formatTimestamp(alert.startTimeUTC)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{alert.alertImpact}</td>
+                    <td className="px-2 py-1.5 text-xs text-gray-900">{alert.alertImpact}</td>
                   </tr>
                 ))}
               </tbody>
@@ -147,36 +147,36 @@ function VropsDataTable({ data, dataType }) {
         
         {/* Sayfalama kontrolleri */}
         {totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
+          <div className="mt-2 flex items-center justify-between">
+            <div className="text-xs text-gray-600">
               Sayfa {currentPage} / {totalPages}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-1">
               <button
                 onClick={() => handlePageChange(1)}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 İlk
               </button>
               <button
                 onClick={() => handlePageChange(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Önceki
               </button>
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Sonraki
               </button>
               <button
                 onClick={() => handlePageChange(totalPages)}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Son
               </button>

@@ -57,10 +57,10 @@ function MetricTable({ data }) {
     <div className="mt-6">
       {/* Özet istatistikler */}
       {data.summary && (
-        <div className="mb-4 grid grid-cols-4 gap-3">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div className="mb-2 grid grid-cols-4 gap-2">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
             <div className="text-xs text-blue-600 font-semibold">Minimum</div>
-            <div className="text-xl font-bold text-blue-700">
+            <div className="text-lg font-bold text-blue-700">
               {data.summary.min !== null && data.summary.min !== undefined && !isNaN(data.summary.min) 
                 ? `${Number(data.summary.min).toFixed(2)} ${data.unit || ''}` 
                 : 'N/A'}
@@ -98,17 +98,17 @@ function MetricTable({ data }) {
               </div>
             )}
           </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
             <div className="text-xs text-purple-600 font-semibold">Ortalama</div>
-            <div className="text-xl font-bold text-purple-700">
+            <div className="text-lg font-bold text-purple-700">
               {data.summary.avg !== null && data.summary.avg !== undefined && !isNaN(data.summary.avg)
                 ? `${Number(data.summary.avg).toFixed(2)} ${data.unit || ''}` 
                 : 'N/A'}
             </div>
           </div>
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-2">
             <div className="text-xs text-orange-600 font-semibold">Son Değer</div>
-            <div className="text-xl font-bold text-orange-700">
+            <div className="text-lg font-bold text-orange-700">
               {data.summary.latest !== null && data.summary.latest !== undefined && !isNaN(data.summary.latest)
                 ? `${Number(data.summary.latest).toFixed(2)} ${data.unit || ''}` 
                 : 'N/A'}
@@ -130,16 +130,16 @@ function MetricTable({ data }) {
       )}
 
       {/* Sayfa başına kayıt sayısı seçici */}
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600">Sayfa başına:</label>
+          <label className="text-xs text-gray-600">Sayfa başına:</label>
           <select
             value={pageSize}
             onChange={(e) => {
               setPageSize(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value={50}>50</option>
             <option value={100}>100</option>
@@ -147,7 +147,7 @@ function MetricTable({ data }) {
             <option value={1000}>1000</option>
           </select>
         </div>
-        <div className="text-sm text-gray-600">
+        <div className="text-xs text-gray-600">
           {startIndex + 1}-{Math.min(endIndex, sortedData.length)} / {sortedData.length} kayıt
         </div>
       </div>
@@ -159,13 +159,13 @@ function MetricTable({ data }) {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th 
-                  className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                  className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('timestamp')}
                 >
                   Zaman {sortConfig.key === 'timestamp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                 </th>
                 <th 
-                  className="px-4 py-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
+                  className="px-2 py-1.5 text-left text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100"
                   onClick={() => handleSort('value')}
                 >
                   Değer ({data.unit || ''}) {sortConfig.key === 'value' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -175,8 +175,8 @@ function MetricTable({ data }) {
             <tbody className="divide-y divide-gray-200">
               {paginatedData.map((metric, index) => (
                 <tr key={metric.timestamp || index} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-900">{metric.formattedDate}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 font-medium">{metric.formattedValue}</td>
+                  <td className="px-2 py-1.5 text-xs text-gray-900">{metric.formattedDate}</td>
+                  <td className="px-2 py-1.5 text-xs text-gray-900 font-medium">{metric.formattedValue}</td>
                 </tr>
               ))}
             </tbody>
@@ -186,36 +186,36 @@ function MetricTable({ data }) {
       
       {/* Sayfalama kontrolleri */}
       {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-sm text-gray-600">
+        <div className="mt-2 flex items-center justify-between">
+          <div className="text-xs text-gray-600">
             Sayfa {currentPage} / {totalPages}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             <button
               onClick={() => handlePageChange(1)}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               İlk
             </button>
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Önceki
             </button>
             <button
               onClick={() => handlePageChange(currentPage + 1)}
               disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Sonraki
             </button>
             <button
               onClick={() => handlePageChange(totalPages)}
               disabled={currentPage === totalPages}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Son
             </button>
