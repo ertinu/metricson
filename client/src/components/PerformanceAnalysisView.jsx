@@ -61,7 +61,7 @@ function PerformanceAnalysisView({ data }) {
   if (!data) {
     console.log('PerformanceAnalysisView - No data provided');
     return (
-      <div className="text-center py-12 bg-white border border-gray-200 rounded-lg">
+      <div className="text-center py-12 bg-white border border-gray-200 rounded-md">
         <div className="text-gray-400 mb-2">
           <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -85,7 +85,7 @@ function PerformanceAnalysisView({ data }) {
   return (
     <div className="space-y-4">
       {/* VM Bilgileri */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-md p-4 border border-blue-200">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-gray-900">{data.vmName || 'Bilinmiyor'}</h3>
@@ -107,7 +107,7 @@ function PerformanceAnalysisView({ data }) {
 
       {/* ChatGPT Analizi */}
       {data.analysis && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-hidden">
           <button
             onClick={() => toggleSection('analysis')}
             className="w-full px-6 py-4 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between"
@@ -136,7 +136,7 @@ function PerformanceAnalysisView({ data }) {
 
       {/* Debug: Eğer analysis yoksa debug bilgilerini göster */}
       {!data.analysis && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
           <div className="text-yellow-800 font-semibold mb-2">⚠️ Analiz verisi bulunamadı</div>
           <div className="text-xs text-yellow-700 space-y-1">
             <div><strong>Data Keys:</strong> {JSON.stringify(Object.keys(data || {}))}</div>
@@ -149,7 +149,7 @@ function PerformanceAnalysisView({ data }) {
 
       {/* Konfigürasyon Bilgileri */}
       {data.collectedData && data.collectedData.configuration && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-hidden">
           <button
             onClick={() => toggleSection('configuration')}
             className="w-full px-6 py-4 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between"
@@ -169,7 +169,7 @@ function PerformanceAnalysisView({ data }) {
             <div className="px-6 py-4 border-t border-gray-200 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* CPU Konfigürasyonu */}
-                <div className="bg-gray-50 rounded-lg p-4">
+                <div className="bg-gray-50 rounded-md p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">CPU</h3>
                   <div className="space-y-2 text-sm">
                     {data.collectedData.configuration.cpu.numCpu !== null && data.collectedData.configuration.cpu.numCpu !== undefined && (
@@ -232,7 +232,7 @@ function PerformanceAnalysisView({ data }) {
                 </div>
 
                 {/* Memory Konfigürasyonu */}
-                <div className="bg-gray-50 rounded-lg p-4">
+                <div className="bg-gray-50 rounded-md p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Memory</h3>
                   <div className="space-y-2 text-sm">
                     {data.collectedData.configuration.memory.memoryCap !== null && data.collectedData.configuration.memory.memoryCap !== undefined && (
@@ -277,7 +277,7 @@ function PerformanceAnalysisView({ data }) {
                 </div>
 
                 {/* Storage Konfigürasyonu */}
-                <div className="bg-gray-50 rounded-lg p-4">
+                <div className="bg-gray-50 rounded-md p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">Storage</h3>
                   <div className="space-y-2 text-sm">
                     {data.collectedData.configuration.storage.diskSpace !== null && data.collectedData.configuration.storage.diskSpace !== undefined && (
@@ -315,7 +315,7 @@ function PerformanceAnalysisView({ data }) {
               </div>
 
               {/* Diğer Konfigürasyon Bilgileri */}
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-gray-50 rounded-md p-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">Diğer Bilgiler</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   {data.collectedData.configuration.other.compliance !== null && data.collectedData.configuration.other.compliance !== undefined && (
@@ -349,7 +349,7 @@ function PerformanceAnalysisView({ data }) {
 
       {/* Performans Verileri */}
       {data.collectedData && data.collectedData.performance && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-md shadow-sm border border-gray-200 overflow-hidden">
           <button
             onClick={() => toggleSection('performance')}
             className="w-full px-6 py-4 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between"
@@ -374,13 +374,13 @@ function PerformanceAnalysisView({ data }) {
                   </>
                 )}</p>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
+              <div className="bg-gray-50 rounded-md p-4">
                 <p className="text-sm text-gray-600">
                   Performans metrikleri detayları JSON formatında mevcut. İleride burada grafik ve tablo görünümleri eklenebilir.
                 </p>
                 <details className="mt-2">
                   <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">JSON Verisini Göster</summary>
-                  <pre className="mt-2 text-xs bg-white p-3 rounded border border-gray-200 overflow-auto max-h-96">
+                  <pre className="mt-2 text-xs bg-white p-3 rounded-md border border-gray-200 overflow-auto max-h-96">
                     {JSON.stringify(data.collectedData.performance, null, 2)}
                   </pre>
                 </details>

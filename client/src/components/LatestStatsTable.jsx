@@ -80,7 +80,7 @@ function LatestStatsTable({ data }) {
 
   if (!data || !data.resources || data.resources.length === 0) {
     return (
-      <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
+      <div className="mt-6 bg-white border border-gray-200 rounded-md p-4">
         <p className="text-gray-600">Latest stats verisi bulunamadı.</p>
       </div>
     );
@@ -112,7 +112,7 @@ function LatestStatsTable({ data }) {
         </div>
 
       {/* Tablo */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">

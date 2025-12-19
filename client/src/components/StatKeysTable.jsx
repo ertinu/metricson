@@ -64,7 +64,7 @@ function StatKeysTable({ data }) {
 
   if (!data || !data.statKeys || data.statKeys.length === 0) {
     return (
-      <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
+      <div className="mt-6 bg-white border border-gray-200 rounded-md p-4">
         <p className="text-gray-600">StatKeys verisi bulunamadı.</p>
       </div>
     );
@@ -85,7 +85,7 @@ function StatKeysTable({ data }) {
 
       {/* Resource ID bilgisi */}
       {data.resourceId && (
-        <div className="mb-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+        <div className="mb-2 p-2 bg-gray-50 border border-gray-200 rounded-md">
           <p className="text-xs text-gray-600">
             Resource ID: <span className="font-mono text-gray-800">{data.resourceId}</span>
           </p>
@@ -135,7 +135,7 @@ function StatKeysTable({ data }) {
         </div>
 
       {/* Tablo */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -195,7 +195,7 @@ function StatKeysTable({ data }) {
                     {hoveredRow === index && (
                       <button
                         onClick={() => setIsModalOpen(true)}
-                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
+                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap"
                       >
                         Ne işe yarar?
                       </button>

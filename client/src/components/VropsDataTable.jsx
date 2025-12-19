@@ -74,7 +74,7 @@ function VropsDataTable({ data, dataType }) {
         </div>
 
         {/* Tablo - Light mode */}
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">

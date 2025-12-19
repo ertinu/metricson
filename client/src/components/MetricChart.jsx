@@ -10,7 +10,7 @@ function MetricChart({ data }) {
 
   if (!data || !data.metrics || data.metrics.length === 0) {
     return (
-      <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+      <div className="bg-white border border-gray-200 rounded-md p-4 shadow-sm">
         <p className="text-gray-600">Grafik için veri bulunamadı.</p>
       </div>
     );
@@ -155,7 +155,7 @@ function MetricChart({ data }) {
   };
 
   return (
-    <div ref={chartRef} className={`bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-xl p-6 shadow-lg ${isFullscreen ? 'fixed inset-0 z-50 overflow-auto' : ''}`}>
+    <div ref={chartRef} className={`bg-gradient-to-br from-white to-gray-50 border border-gray-200 rounded-md p-6 shadow-lg ${isFullscreen ? 'fixed inset-0 z-50 overflow-auto' : ''}`}>
       {/* Grafik başlık ve kontroller */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -173,14 +173,14 @@ function MetricChart({ data }) {
         <div className="flex gap-2">
           <button
             onClick={resetZoom}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 transition-all shadow-sm hover:shadow"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 transition-all shadow-sm hover:shadow"
             title="Zoom Sıfırla"
           >
             ↺ Tümünü Göster
           </button>
           <button
             onClick={toggleFullscreen}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 transition-all shadow-sm hover:shadow"
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 transition-all shadow-sm hover:shadow"
             title="Tam Ekran"
           >
             {isFullscreen ? '✕ Kapat' : '⛶ Tam Ekran'}
@@ -190,7 +190,7 @@ function MetricChart({ data }) {
 
       {/* Grafik */}
       {chartData.length > 0 ? (
-        <div className="bg-white rounded-lg border border-gray-200 shadow-inner p-4" style={{ height: `${chartHeight}px` }}>
+        <div className="bg-white rounded-md border border-gray-200 shadow-inner p-4" style={{ height: `${chartHeight}px` }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart 
               data={filteredChartData} 
@@ -270,7 +270,7 @@ function MetricChart({ data }) {
           </ResponsiveContainer>
         </div>
       ) : (
-        <div className="flex items-center justify-center h-64 text-gray-500 bg-white rounded-lg border border-gray-200">
+        <div className="flex items-center justify-center h-64 text-gray-500 bg-white rounded-md border border-gray-200">
           Grafik için geçerli veri bulunamadı
         </div>
       )}
@@ -279,7 +279,7 @@ function MetricChart({ data }) {
       <div className="mt-4 space-y-2">
         {/* Tarih aralığı */}
         {chartData.length > 0 && (
-          <div className="flex items-center justify-center gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-4 py-2 border border-gray-200">
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-700 bg-gray-50 rounded-md px-4 py-2 border border-gray-200">
             <span className="font-semibold">📅 Zaman Aralığı:</span>
             <span className="font-mono">
               {new Date(chartData[0].timestamp).toLocaleString('tr-TR', {

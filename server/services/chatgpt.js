@@ -42,6 +42,7 @@ export async function chatWithGPT(userMessage) {
     - Sadece /suite-api/... ile başlayan tek satır döndür
     - URL (https://, host) YOK
     - Eğer kullanıcı, belirtilen resourcenin kullanılabilecek hangi metrikleri olduğunu sorduğunda "statkeys?resourceId={id}" endointini üret.
+    - Eğer bir kullanıcı bir resource ile ilgili symptom / semptom istediyse örnek endpoint : /suite-api/api/symptoms?resourceId={id}
     - Distributed switch (vds) için resourceKindKey: VmwareDistributedVirtualSwitch
     - Distributed port grup için resourceKindKey: DistributedVirtualPortgroup
     - VM folder için resourceKindKey : VMFolder

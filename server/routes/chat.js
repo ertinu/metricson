@@ -7,17 +7,49 @@ import { chatWithGPT, getMetricDescriptionFromGPT, analyzePerformanceFromGPT } f
 import { executeVropsRequest, getResourceInfo } from '../services/vrops.js';
 import { parseVropsResponse, detectResponseType } from '../services/vropsParser.js';
 import { findVMByName, collectAllVMData, formatDataForGPT } from '../services/performanceAnalyzer.js';
+import pool from '../services/database.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Ana chat endpoint'i - Kullanıcı sorusunu alır, ChatGPT'ye gönderir, gerekiyorsa vROPS'ta çalıştırır
-router.post('/message', async (req, res) => {
+router.post('/message', authenticateToken, async (req, res) => {
   try {
-    const { message, resourceId } = req.body; // resourceId parametresini al
+    const { message, resourceId, chatId } = req.body; // chatId ve resourceId parametrelerini al
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
+
+    // ChatId yoksa yeni sohbet oluştur
+    let currentChatId = chatId;
+    if (!currentChatId) {
+      const [chatResult] = await pool.execute(
+        'INSERT INTO chats (user_id, title) VALUES (?, ?)',
+        [req.user.id, null]
+      );
+      currentChatId = chatResult.insertId;
+    } else {
+      // ChatId varsa, kullanıcıya ait olduğunu kontrol et
+      const [chats] = await pool.execute(
+        'SELECT id FROM chats WHERE id = ? AND user_id = ?',
+        [currentChatId, req.user.id]
+      );
+      if (chats.length === 0) {
+        return res.status(403).json({ error: 'Bu sohbete erişim yetkiniz yok.' });
+      }
+    }
+
+    // Aktif AI modelini al (cache'lenmiş)
+    let aiModel;
+    try {
+      const { getActiveAIModel } = await import('../services/aiModelCache.js');
+      aiModel = await getActiveAIModel();
+    } catch (error) {
+      return res.status(500).json({ error: 'Aktif AI modeli bulunamadı. Lütfen ayarlardan bir AI modeli ekleyin.' });
+    }
+
+    const aiModelId = aiModel.id;
 
     // Kullanıcıdan gelen soruyu ve vROPS bağlantı parametrelerini backend loglarına yaz
     // Bu sayede hangi soruya karşılık nasıl cevap üretildiğini ve hangi vROPS ortamına gittiğini loglardan takip edebilirsin
@@ -47,6 +79,15 @@ router.post('/message', async (req, res) => {
     // Eğer mesaj "ne işe yarar" içeriyorsa ve resourceId varsa, metrik açıklaması için özel fonksiyonu kullan
     const isMetricDescriptionRequest = message.toLowerCase().includes('ne işe yarar') && resourceId;
     
+    // AI model bilgilerini chatgpt.js'e geçirmek için environment değişkenlerini geçici olarak güncelle
+    const originalApiKey = process.env.CHATGPT_API_KEY;
+    const originalModel = process.env.CHATGPT_MODEL;
+    const originalBaseUrl = process.env.CHATGPT_BASE_URL;
+    
+    process.env.CHATGPT_API_KEY = aiModel.api_token;
+    process.env.CHATGPT_MODEL = aiModel.model_version;
+    process.env.CHATGPT_BASE_URL = aiModel.base_url;
+    
     let gptResponse;
     if (isMetricDescriptionRequest) {
       // Metrik açıklaması için özel format: "Resource tipi yani, resourceKind {VirtualMachine} olan Bu vROPS metrik ne işe yarar: mem|workload. Kısa ve öz bir açıklama yap, Türkçe olarak."
@@ -60,13 +101,19 @@ router.post('/message', async (req, res) => {
       // Normal chat için standart fonksiyonu kullan
       gptResponse = await chatWithGPT(message);
     }
-
+    
+    // Environment değişkenlerini geri yükle
+    process.env.CHATGPT_API_KEY = originalApiKey;
+    process.env.CHATGPT_MODEL = originalModel;
+    process.env.CHATGPT_BASE_URL = originalBaseUrl;
+    
     // ChatGPT'den gelen cevabı backend loglarına yaz
     console.log('ChatGPT cevabı (gptResponse):', gptResponse);
 
     // 2) ChatGPT'den gelen cevabın içinde vROPS endpoint PATH'i var mı kontrol et
     // Örn: "/suite-api/api/resources/33/stats?statKey=cpu|usage_average&begin=...&end=..."
     const vropsRequest = buildVropsRequestFromGptPath(gptResponse);
+    console.log('[CHAT] vropsRequest parse edildi:', JSON.stringify(vropsRequest, null, 2));
 
     // 3) Varsa vROPS API request'ini çalıştırmayı dene (yoksa hiç çağrı yapma)
     let vropsResult = null;
@@ -113,9 +160,54 @@ router.post('/message', async (req, res) => {
       }
     }
 
+    // Tüm veritabanı işlemlerini transaction içinde yap (performans için)
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    let userMessageResult = null;
+    let assistantMessageResult = null;
+
+    try {
+      // Kullanıcı mesajını veritabanına kaydet
+      const [userMessageInsert] = await connection.execute(
+        'INSERT INTO messages (chat_id, user_id, role, content, ai_model_id) VALUES (?, ?, ?, ?, ?)',
+        [currentChatId, req.user.id, 'user', message, aiModelId]
+      );
+      userMessageResult = userMessageInsert;
+
+      // Asistan cevabını veritabanına kaydet
+      const [assistantMessageInsert] = await connection.execute(
+        'INSERT INTO messages (chat_id, user_id, role, content, response_model_id) VALUES (?, ?, ?, ?, ?)',
+        [currentChatId, req.user.id, 'assistant', gptResponse, aiModelId]
+      );
+      assistantMessageResult = assistantMessageInsert;
+
+      // Sohbetin updated_at'ini güncelle ve başlık kontrolü yap (tek sorguda)
+      // Eğer title NULL ise ve ilk mesajsa, başlık oluştur
+      const title = message.substring(0, 50).trim();
+      await connection.execute(
+        'UPDATE chats SET updated_at = CURRENT_TIMESTAMP, title = COALESCE(title, ?) WHERE id = ? AND title IS NULL',
+        [title, currentChatId]
+      );
+      
+      // Eğer title zaten varsa sadece updated_at'i güncelle
+      await connection.execute(
+        'UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND title IS NOT NULL',
+        [currentChatId]
+      );
+
+      await connection.commit();
+      connection.release();
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      throw error;
+    }
+
     // Sonucu kullanıcıya döndür (ChatGPT cevabı her zaman döner)
     res.json({
       success: true,
+      chatId: currentChatId,
       userMessage: message,
       gptResponse: gptResponse,
       vropsRequest: vropsRequest,
@@ -124,13 +216,15 @@ router.post('/message', async (req, res) => {
       dataType: dataType, // 'alerts', 'metrics', vs.
       displayType: displayType, // Frontend'e nasıl göstereceğini söyle ('table' veya 'card')
       vropsError: vropsError,
-      vropsExecuted: vropsExecuted
+      vropsExecuted: vropsExecuted,
+      userMessageId: userMessageResult.insertId,
+      assistantMessageId: assistantMessageResult.insertId
     });
 
   } catch (error) {
-    console.error('Chat error:', error);
+    console.error('Chat message error:', error);
     res.status(500).json({ 
-      error: 'An error occurred while processing your request',
+      error: 'Mesaj gönderilirken bir hata oluştu',
       details: error.message 
     });
   }
@@ -185,29 +279,66 @@ function buildVropsRequestFromGptPath(gptResponse) {
     for (const [key, value] of searchParams.entries()) {
       params[key] = value;
     }
+    console.log('[BUILD VROPS REQUEST] Query string parse edildi:', queryString);
+    console.log('[BUILD VROPS REQUEST] Params objesi:', JSON.stringify(params, null, 2));
+  } else {
+    console.log('[BUILD VROPS REQUEST] Query string yok');
   }
 
-  return {
+  const result = {
     endpoint,      // Örn: /api/resources/33/stats
     method: 'GET', // Şimdilik tüm bu path'ler GET varsayılıyor
     params,
     body: {}
   };
+  
+  console.log('[BUILD VROPS REQUEST] Sonuç:', JSON.stringify(result, null, 2));
+  return result;
 }
 
 /**
  * Performans analizi endpoint'i
  * VM ismini tespit eder, verilerini toplar ve ChatGPT'ye analiz için gönderir
  * POST /api/chat/analyze-performance
- * Body: { message: "x isimli VM neden yavaş?", vmName?: "optional" }
+ * Body: { message: "x isimli VM neden yavaş?", vmName?: "optional", chatId?: "optional" }
  */
-router.post('/analyze-performance', async (req, res) => {
+router.post('/analyze-performance', authenticateToken, async (req, res) => {
   try {
-    const { message, vmName } = req.body;
+    const { message, vmName, chatId } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
+
+    // ChatId yoksa yeni sohbet oluştur
+    let currentChatId = chatId;
+    if (!currentChatId) {
+      const [chatResult] = await pool.execute(
+        'INSERT INTO chats (user_id, title) VALUES (?, ?)',
+        [req.user.id, null]
+      );
+      currentChatId = chatResult.insertId;
+    } else {
+      // ChatId varsa, kullanıcıya ait olduğunu kontrol et
+      const [chats] = await pool.execute(
+        'SELECT id FROM chats WHERE id = ? AND user_id = ?',
+        [currentChatId, req.user.id]
+      );
+      if (chats.length === 0) {
+        return res.status(403).json({ error: 'Bu sohbete erişim yetkiniz yok.' });
+      }
+    }
+
+    // Aktif AI modelini al (cache'lenmiş)
+    let aiModel;
+    try {
+      const { getActiveAIModel } = await import('../services/aiModelCache.js');
+      aiModel = await getActiveAIModel();
+    } catch (error) {
+      return res.status(500).json({ error: 'Aktif AI modeli bulunamadı. Lütfen ayarlardan bir AI modeli ekleyin.' });
+    }
+
+    const aiModelId = aiModel.id;
 
     console.log('--- PERFORMANCE ANALYSIS REQUEST START ---');
     console.log('Kullanıcı sorusu:', message);
@@ -301,6 +432,15 @@ Soru: ${message}`;
     const formattedData = formatDataForGPT(vmData);
     console.log('Formatted data for GPT:', JSON.stringify(formattedData, null, 2));
 
+    // AI model bilgilerini chatgpt.js'e geçirmek için environment değişkenlerini geçici olarak güncelle
+    const originalApiKey = process.env.CHATGPT_API_KEY;
+    const originalModel = process.env.CHATGPT_MODEL;
+    const originalBaseUrl = process.env.CHATGPT_BASE_URL;
+    
+    process.env.CHATGPT_API_KEY = aiModel.api_token;
+    process.env.CHATGPT_MODEL = aiModel.model_version;
+    process.env.CHATGPT_BASE_URL = aiModel.base_url;
+
     // ChatGPT'ye analiz için gönder
     let analysis;
     try {
@@ -311,9 +451,57 @@ Soru: ${message}`;
       console.log('Analysis length:', analysis?.length || 0, 'characters');
     } catch (error) {
       console.error('ChatGPT analizi başarısız:', error.message);
+      // Environment değişkenlerini geri yükle
+      process.env.CHATGPT_API_KEY = originalApiKey;
+      process.env.CHATGPT_MODEL = originalModel;
+      process.env.CHATGPT_BASE_URL = originalBaseUrl;
       return res.status(500).json({ 
         error: `Performans analizi yapılamadı: ${error.message}` 
       });
+    }
+
+    // Environment değişkenlerini geri yükle
+    process.env.CHATGPT_API_KEY = originalApiKey;
+    process.env.CHATGPT_MODEL = originalModel;
+    process.env.CHATGPT_BASE_URL = originalBaseUrl;
+
+    // Tüm veritabanı işlemlerini transaction içinde yap (performans için)
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Kullanıcı mesajını veritabanına kaydet
+      await connection.execute(
+        'INSERT INTO messages (chat_id, user_id, role, content, ai_model_id) VALUES (?, ?, ?, ?, ?)',
+        [currentChatId, req.user.id, 'user', message, aiModelId]
+      );
+
+      // Asistan cevabını veritabanına kaydet
+      await connection.execute(
+        'INSERT INTO messages (chat_id, user_id, role, content, response_model_id) VALUES (?, ?, ?, ?, ?)',
+        [currentChatId, req.user.id, 'assistant', analysis, aiModelId]
+      );
+
+      // Sohbetin updated_at'ini güncelle ve başlık kontrolü yap (tek sorguda)
+      // Eğer title NULL ise ve ilk mesajsa, başlık oluştur
+      const title = message.substring(0, 50).trim();
+      await connection.execute(
+        'UPDATE chats SET updated_at = CURRENT_TIMESTAMP, title = COALESCE(title, ?) WHERE id = ? AND title IS NULL',
+        [title, currentChatId]
+      );
+      
+      // Eğer title zaten varsa sadece updated_at'i güncelle
+      await connection.execute(
+        'UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND title IS NOT NULL',
+        [currentChatId]
+      );
+
+      await connection.commit();
+      connection.release();
+    } catch (error) {
+      await connection.rollback();
+      connection.release();
+      throw error;
     }
 
     console.log('--- PERFORMANCE ANALYSIS REQUEST END ---');
@@ -321,11 +509,14 @@ Soru: ${message}`;
     // Sonucu döndür
     res.json({
       success: true,
+      chatId: currentChatId,
       vmId: resourceId,
       vmName: targetVMName,
       analysis: analysis,
       collectedData: vmData,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      userMessageId: userMessageResult.insertId,
+      assistantMessageId: assistantMessageResult.insertId
     });
 
   } catch (error) {

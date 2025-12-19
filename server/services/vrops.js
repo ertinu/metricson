@@ -18,7 +18,7 @@ let tokenExpiry = null;
 
 // vROPS API'ye authentication yapan fonksiyon
 // Burada login sürecini ve token kullanımını backend loglarına yazıyoruz
-async function authenticateVrops() {
+export async function authenticateVrops() {
   try {
     const host = process.env.VROPS_HOST;
     const port = process.env.VROPS_PORT || 443;
@@ -116,7 +116,8 @@ export async function getResourceInfo(resourceId) {
   }
 }
 
-export async function executeVropsRequest(requestConfig) {
+// Frontend'den gelen header'ları kullanarak vROPS request'i çalıştır
+export async function executeVropsRequestWithHeaders(requestConfig, customHeaders = null) {
   try {
     const host = process.env.VROPS_HOST;
     const port = process.env.VROPS_PORT || 443;
@@ -126,22 +127,31 @@ export async function executeVropsRequest(requestConfig) {
       throw new Error('VROPS_HOST is not configured');
     }
 
-    // Önce authenticate ol
-    const token = await authenticateVrops();
-
     // Request URL'ini oluştur
     const baseUrl = `${protocol}://${host}:${port}/suite-api`;
     const url = `${baseUrl}${requestConfig.endpoint}`;
+
+    // Header'ları hazırla - önce custom header'ları kullan, yoksa default'ları
+    const headers = {};
+    
+    if (customHeaders && typeof customHeaders === 'object') {
+      // Frontend'den gelen header'ları kullan
+      Object.assign(headers, customHeaders);
+      console.log('[vROPS REQUEST] Frontend header\'ları kullanılıyor:', Object.keys(headers));
+    } else {
+      // Default header'ları kullan (backend token ile)
+      const token = await authenticateVrops();
+      headers['Authorization'] = `vRealizeOpsToken ${token}`;
+      headers['Content-Type'] = 'application/json';
+      headers['Accept'] = 'application/json';
+      console.log('[vROPS REQUEST] Backend token kullanılıyor');
+    }
 
     // Request config'i hazırla
     const axiosConfig = {
       method: requestConfig.method || 'GET',
       url: url,
-      headers: {
-        'Authorization': `vRealizeOpsToken ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
+      headers: headers,
       // SSL sertifika doğrulamasını atla (geliştirme için)
       httpsAgent: new https.Agent({
         rejectUnauthorized: false
@@ -162,7 +172,7 @@ export async function executeVropsRequest(requestConfig) {
     console.log('Params:', JSON.stringify(axiosConfig.params || {}, null, 2));
     console.log('Body:', JSON.stringify(axiosConfig.data || {}, null, 2));
     console.log('Headers:', JSON.stringify({
-      'Authorization': axiosConfig.headers.Authorization ? 'vRealizeOpsToken [REDACTED]' : 'None',
+      'Authorization': axiosConfig.headers.Authorization ? (axiosConfig.headers.Authorization.startsWith('OpsToken') ? 'OpsToken [REDACTED]' : 'vRealizeOpsToken [REDACTED]') : 'None',
       'Content-Type': axiosConfig.headers['Content-Type'],
       'Accept': axiosConfig.headers.Accept
     }, null, 2));
@@ -185,6 +195,11 @@ export async function executeVropsRequest(requestConfig) {
     console.error('vROPS API Error:', error.response?.data || error.message);
     throw new Error(`vROPS API hatası: ${error.response?.data?.message || error.message}`);
   }
+}
+
+// Orijinal fonksiyon - geriye uyumluluk için
+export async function executeVropsRequest(requestConfig) {
+  return executeVropsRequestWithHeaders(requestConfig, null);
 }
 
 // vROPS bağlantı testi

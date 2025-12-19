@@ -13,9 +13,12 @@ export default {
         "background-dark": "#211111",
         "sidebar-light": "#ffffff",
         "panel-light": "#ffffff",
+        "surface-light": "#ffffff",
         "border-light": "#e2e8f0",
         "input-light": "#ffffff",
-        "text-light": "#1a202c",
+        "text-light": "#475569", // Daha koyu atrasit renk (slate-600) - rgb(148, 163, 184) yerine
+        "text-medium": "#64748b",
+        "text-dark": "#334155",
         "text-secondary-light": "#4a5568",
       },
       fontFamily: {
@@ -23,9 +26,9 @@ export default {
         "body": ["Noto Sans", "sans-serif"],
       },
       borderRadius: {
-        "DEFAULT": "0.25rem",
-        "lg": "0.5rem",
-        "xl": "0.75rem",
+        "DEFAULT": "1rem",
+        "lg": "2rem",
+        "xl": "3rem",
         "full": "9999px",
       },
     },
