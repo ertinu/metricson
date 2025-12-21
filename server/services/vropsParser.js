@@ -238,6 +238,7 @@ function formatTimestamp(timestamp) {
 
 /**
  * Metric değerini birimle birlikte formatlar
+ * KB cinsinden değerleri GB'ye çevirir
  */
 function formatMetricValue(value, statKey) {
   if (value === null || value === undefined || isNaN(value) || value === '') {
@@ -249,6 +250,23 @@ function formatMetricValue(value, statKey) {
     return 'N/A';
   }
   
+  const lowerKey = (statKey || '').toLowerCase();
+  
+  // diskspace|used ve diskspace|provisionedSpace için KB'den GB'ye çevir
+  if (lowerKey.includes('diskspace') && (lowerKey.includes('used') || lowerKey.includes('provisionedspace'))) {
+    // KB'den GB'ye çevir: KB / 1024 / 1024 = GB
+    const valueInGB = numValue / 1024 / 1024;
+    return `${valueInGB.toFixed(2)} GB`;
+  }
+  
+  // mem|consumed_average için KB'den MB'ye çevir
+  if (lowerKey.startsWith('mem|') && lowerKey.includes('consumed')) {
+    // KB'den MB'ye çevir: KB / 1024 = MB
+    const valueInMB = numValue / 1024;
+    return `${valueInMB.toFixed(2)} MB`;
+  }
+  
+  // Diğer metrikler için unit kontrolü yap
   const unit = detectUnit(statKey);
   if (unit === '%') {
     return `${numValue.toFixed(2)}%`;
@@ -256,6 +274,8 @@ function formatMetricValue(value, statKey) {
     return `${numValue.toFixed(2)} ${unit}`;
   } else if (unit === 'MHz' || unit === 'GHz') {
     return `${numValue.toFixed(2)} ${unit}`;
+  } else if (unit === 'KB/s') {
+    return `${numValue.toFixed(2)} KB/s`;
   }
   
   return numValue.toFixed(2);
@@ -269,17 +289,50 @@ function detectUnit(statKey) {
   
   const lowerKey = statKey.toLowerCase();
   
-  if (lowerKey.includes('usage') || lowerKey.includes('utilization') || lowerKey.includes('percent')) {
+  // CPU metrikleri - usage kontrolünden ÖNCE kontrol et (cpu|usagemhz_average için)
+  if (lowerKey.includes('cpu') && (lowerKey.includes('mhz') || lowerKey.includes('ghz'))) {
+    if (lowerKey.includes('ghz')) return 'GHz';
+    return 'MHz';
+  }
+  
+  // VirtualDisk read/write metrikleri - KB/s
+  if (lowerKey.includes('virtualdisk') && (lowerKey.includes('read') || lowerKey.includes('write'))) {
+    return 'KB/s';
+  }
+  
+  // Disk space metrikleri - GB
+  if (lowerKey.includes('diskspace') && (lowerKey.includes('used') || lowerKey.includes('provisionedspace'))) {
+    return 'GB';
+  }
+  
+  // VirtualDisk usage - %
+  if (lowerKey.includes('virtualdisk') && lowerKey.includes('usage')) {
     return '%';
   }
-  if (lowerKey.includes('memory') || lowerKey.includes('disk')) {
+  
+  // Usage kontrolü - ama mhz/ghz içermiyorsa
+  if ((lowerKey.includes('usage') || lowerKey.includes('utilization') || lowerKey.includes('percent')) 
+      && !lowerKey.includes('mhz') && !lowerKey.includes('ghz')) {
+    return '%';
+  }
+  
+  // Memory metrikleri: 'memory', 'mem|' ile başlayan veya 'mem' içeren
+  if (lowerKey.includes('memory') || lowerKey.startsWith('mem|') || 
+      (lowerKey.includes('mem') && !lowerKey.includes('memory'))) {
+    // mem|consumed_average = MB
+    if (lowerKey.includes('consumed')) {
+      return 'MB';
+    }
     if (lowerKey.includes('mb')) return 'MB';
     if (lowerKey.includes('gb')) return 'GB';
     return 'MB'; // Varsayılan
   }
-  if (lowerKey.includes('cpu') && (lowerKey.includes('mhz') || lowerKey.includes('ghz'))) {
-    if (lowerKey.includes('ghz')) return 'GHz';
-    return 'MHz';
+  
+  // Disk metrikleri (diskspace hariç)
+  if (lowerKey.includes('disk') && !lowerKey.includes('diskspace')) {
+    if (lowerKey.includes('mb')) return 'MB';
+    if (lowerKey.includes('gb')) return 'GB';
+    return 'MB'; // Varsayılan
   }
   
   return '';
@@ -302,6 +355,9 @@ export function detectResponseType(endpoint) {
   }
   if (lowerEndpoint.includes('/stats/latest')) {
     return 'latestStats';
+  }
+  if (lowerEndpoint.includes('/stats/topn')) {
+    return 'topn';
   }
   if (lowerEndpoint.includes('/stats') || lowerEndpoint.includes('/metrics')) {
     return 'metrics';
@@ -717,6 +773,167 @@ export function parseResourcesResponse(vropsResponse) {
 }
 
 /**
+ * TopN Stats response'unu parse eder
+ * En fazla/az kaynak tüketen VM'leri listelemek için kullanılan endpoint'in response'unu parse eder
+ * @param {Object} vropsResponse - vROPS API'den gelen topn stats response
+ * @param {Object} requestConfig - Orijinal request config (sortOrder, statKey vs. için)
+ * @returns {Object} Parse edilmiş topn stats verisi
+ */
+export function parseTopNStatsResponse(vropsResponse, requestConfig = {}) {
+  if (!vropsResponse || !vropsResponse.resourceStatGroups || !Array.isArray(vropsResponse.resourceStatGroups)) {
+    return {
+      vms: [],
+      totalCount: 0,
+      sortOrder: null,
+      statKeys: [],
+      summary: {}
+    };
+  }
+
+  const sortOrder = vropsResponse.sortOrder || requestConfig.params?.sortOrder || 'DESCENDING';
+  const resourceStatGroups = vropsResponse.resourceStatGroups;
+  
+  // Request'teki statKey'i al (normalize edilmiş format için)
+  const requestedStatKey = requestConfig.params?.statKey || null;
+  
+  // StatKey normalize fonksiyonu - "virtualDisk:Aggregate of all instances|usage" -> "virtualDisk|usage"
+  const normalizeStatKey = (statKey) => {
+    if (!statKey) return statKey;
+    // ":Aggregate of all instances" gibi kısımları kaldır
+    return statKey.replace(/:[^|]*/g, '');
+  };
+
+  // Tüm statKey'leri topla (her VM için farklı statKey'ler olabilir)
+  const allStatKeys = new Set();
+  resourceStatGroups.forEach(group => {
+    if (group.resourceStats && Array.isArray(group.resourceStats)) {
+      group.resourceStats.forEach(resourceStat => {
+        if (resourceStat.stat && resourceStat.stat.statKey && resourceStat.stat.statKey.key) {
+          const rawStatKey = resourceStat.stat.statKey.key;
+          // StatKey'i normalize et veya request'teki statKey'i kullan
+          const normalizedStatKey = requestedStatKey || normalizeStatKey(rawStatKey);
+          allStatKeys.add(normalizedStatKey);
+        }
+      });
+    }
+  });
+
+  // VM'leri parse et
+  const vms = [];
+  
+  // VM isimlerini requestConfig'den al (eğer varsa)
+  // requestConfig.vmNameMap bir obje olarak gelir (Map değil)
+  const vmNameMapObj = requestConfig.vmNameMap || {};
+  
+  resourceStatGroups.forEach((group, index) => {
+    const resourceId = group.groupKey || null;
+    const resourceStats = group.resourceStats || [];
+    
+    // VM ismini objeden al, yoksa resourceId kullan
+    const vmName = vmNameMapObj[resourceId] || resourceId || 'N/A';
+    
+    // Her statKey için değerleri topla
+    const stats = {};
+    
+    resourceStats.forEach(resourceStat => {
+      const stat = resourceStat.stat;
+      if (!stat || !stat.statKey || !stat.statKey.key) {
+        return;
+      }
+      
+      // StatKey'i normalize et - request'teki statKey varsa onu kullan, yoksa normalize et
+      const rawStatKey = stat.statKey.key;
+      const statKey = requestedStatKey || normalizeStatKey(rawStatKey);
+      const data = stat.data || [];
+      
+      // Ortalama değeri hesapla (data array'indeki tüm değerlerin ortalaması)
+      let avgValue = null;
+      if (data.length > 0) {
+        const numericData = data
+          .map(val => typeof val === 'number' ? val : parseFloat(val))
+          .filter(val => !isNaN(val));
+        
+        if (numericData.length > 0) {
+          avgValue = numericData.reduce((sum, val) => sum + val, 0) / numericData.length;
+        }
+      }
+      
+      // Son değeri al (en güncel değer)
+      const latestValue = data.length > 0 ? data[data.length - 1] : null;
+      const latestNumericValue = latestValue !== null && latestValue !== undefined 
+        ? (typeof latestValue === 'number' ? latestValue : parseFloat(latestValue))
+        : null;
+      
+      // Geçerli sayısal değer kontrolü
+      const finalValue = (!isNaN(latestNumericValue) && latestNumericValue !== null) 
+        ? latestNumericValue 
+        : ((!isNaN(avgValue) && avgValue !== null) ? avgValue : null);
+      
+      stats[statKey] = {
+        statKey: statKey,
+        value: finalValue,
+        avgValue: avgValue,
+        latestValue: latestNumericValue,
+        formattedValue: finalValue !== null && !isNaN(finalValue) 
+          ? formatMetricValue(finalValue, statKey) 
+          : 'N/A',
+        unit: detectUnit(statKey),
+        timestamps: stat.timestamps || [],
+        data: data
+      };
+    });
+    
+    // VM objesi oluştur
+    const vm = {
+      rank: index + 1, // Sıralama (1'den başlar)
+      resourceId: resourceId,
+      name: vmName, // VM ismi Map'ten alındı
+      stats: stats,
+      statKeys: Object.keys(stats),
+      // En yüksek değere sahip statKey'i bul (sıralama için)
+      primaryStatKey: Object.keys(stats).length > 0 ? Object.keys(stats)[0] : null,
+      primaryValue: Object.keys(stats).length > 0 && stats[Object.keys(stats)[0]] 
+        ? stats[Object.keys(stats)[0]].value 
+        : null
+    };
+    
+    vms.push(vm);
+  });
+
+  // İstatistiksel özet oluştur
+  const summary = {
+    totalVMs: vms.length,
+    sortOrder: sortOrder,
+    statKeys: Array.from(allStatKeys),
+    // Her statKey için min/max/avg değerleri
+    byStatKey: {}
+  };
+
+  allStatKeys.forEach(statKey => {
+    const values = vms
+      .map(vm => vm.stats[statKey]?.value)
+      .filter(val => val !== null && !isNaN(val));
+    
+    if (values.length > 0) {
+      summary.byStatKey[statKey] = {
+        min: Math.min(...values),
+        max: Math.max(...values),
+        avg: values.reduce((sum, val) => sum + val, 0) / values.length,
+        count: values.length
+      };
+    }
+  });
+
+  return {
+    vms: vms,
+    totalCount: vms.length,
+    sortOrder: sortOrder,
+    statKeys: Array.from(allStatKeys),
+    summary: summary
+  };
+}
+
+/**
  * vROPS response'unu tipine göre parse eder
  * @param {Object} vropsResponse - vROPS API'den gelen ham response
  * @param {String} responseType - Veri tipi ('alerts', 'metrics', vs.)
@@ -743,6 +960,8 @@ export function parseVropsResponse(vropsResponse, responseType, requestConfig = 
       return parsePropertiesResponse(vropsResponse);
     case 'resources':
       return parseResourcesResponse(vropsResponse);
+    case 'topn':
+      return parseTopNStatsResponse(vropsResponse, requestConfig);
     default:
       return { data: vropsResponse, type: 'unknown' };
   }

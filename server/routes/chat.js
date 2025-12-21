@@ -3,7 +3,7 @@
 // 1) Kullanıcı sadece sohbet / açıklama istiyorsa -> Sadece ChatGPT cevabı döner, vROPS çağrısı yapılmaz
 // 2) Kullanıcı metin içinde bir vROPS REST API isteği (GET/POST/...) yazdıysa -> Bu istek vROPS üzerinde çalıştırılır ve response ekrana yazılır
 import express from 'express';
-import { chatWithGPT, getMetricDescriptionFromGPT, analyzePerformanceFromGPT } from '../services/chatgpt.js';
+import { chatWithGPT, getMetricDescriptionFromGPT, analyzePerformanceFromGPT, analyzePerformanceValuesFromGPT } from '../services/chatgpt.js';
 import { executeVropsRequest, getResourceInfo } from '../services/vrops.js';
 import { parseVropsResponse, detectResponseType } from '../services/vropsParser.js';
 import { findVMByName, collectAllVMData, formatDataForGPT } from '../services/performanceAnalyzer.js';
@@ -79,6 +79,26 @@ router.post('/message', authenticateToken, async (req, res) => {
     // Eğer mesaj "ne işe yarar" içeriyorsa ve resourceId varsa, metrik açıklaması için özel fonksiyonu kullan
     const isMetricDescriptionRequest = message.toLowerCase().includes('ne işe yarar') && resourceId;
     
+    // Performans değerleri isteği kontrolü
+    const lowerMessage = message.toLowerCase();
+    const isPerformanceValuesRequest = (
+      lowerMessage.includes('performans değerleri') ||
+      lowerMessage.includes('performans değerlerini getir') ||
+      lowerMessage.includes('performansını görmek istiyorum') ||
+      lowerMessage.includes('performans değerleri nedir')
+    );
+    
+    // Eğer performans değerleri isteği varsa ve resourceId yoksa, mesajdan UUID tespit et
+    let performanceResourceId = resourceId;
+    if (isPerformanceValuesRequest && !performanceResourceId) {
+      const uuidPattern = /([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i;
+      const uuidMatch = message.match(uuidPattern);
+      if (uuidMatch) {
+        performanceResourceId = uuidMatch[1];
+        console.log('Mesajdan tespit edilen resource ID:', performanceResourceId);
+      }
+    }
+    
     // AI model bilgilerini chatgpt.js'e geçirmek için environment değişkenlerini geçici olarak güncelle
     const originalApiKey = process.env.CHATGPT_API_KEY;
     const originalModel = process.env.CHATGPT_MODEL;
@@ -89,7 +109,101 @@ router.post('/message', authenticateToken, async (req, res) => {
     process.env.CHATGPT_BASE_URL = aiModel.base_url;
     
     let gptResponse;
-    if (isMetricDescriptionRequest) {
+    let performanceValuesData = null;
+    let performanceValuesComment = null;
+    
+    if (isPerformanceValuesRequest) {
+      // Performans değerleri için özel işlem
+      console.log('--- PERFORMANCE VALUES REQUEST START ---');
+      
+      if (!performanceResourceId) {
+        gptResponse = 'Performans değerlerini almak için lütfen bir resource ID belirtin (örnek: "b9192081-0170-40f8-9a7d-b15e6832e74d li sunucunun performans değerlerini getir").';
+        console.log('Resource ID bulunamadı');
+      } else {
+        console.log('Resource ID:', performanceResourceId);
+        
+        try {
+          // vROPS'tan latest stats çek
+          const latestStatsRequest = {
+            endpoint: `/api/resources/${performanceResourceId}/stats/latest`,
+            method: 'GET',
+            params: {},
+            body: {}
+          };
+          
+          const latestStatsResponse = await executeVropsRequest(latestStatsRequest);
+          
+          // Response'dan belirli statKey'leri parse et - Her zaman 8 statKey gösterilecek
+          const targetStatKeys = {
+            'guest|cpu_queue': 'CPU Queue (%)',
+            'guest|contextSwapRate_latest': 'CPU Context Switch Rate',
+            'guest|disk_queue': 'Disk Queue',
+            'cpu|readyPct': 'CPU Ready',
+            'cpu|costopPct': 'CPU Co-stop (%)',
+            'mem|host_contentionPct': 'Memory Contention (%)',
+            'virtualDisk|20_sec_peak_totalLatency_average': 'Virtual Disk Total Latency (μs)',
+            'net|droppedTx_summation': 'Network Transmitted Packets Dropped'
+          };
+          
+          // Önce tüm statKey'leri N/A ile başlat
+          const extractedStats = Object.entries(targetStatKeys).map(([statKey, title]) => ({
+            title: title,
+            statKey: statKey,
+            value: null,
+            timestamp: null
+          }));
+          
+          // Response'dan gelen değerleri eşleştir
+          if (latestStatsResponse.data && latestStatsResponse.data.values && latestStatsResponse.data.values.length > 0) {
+            const statList = latestStatsResponse.data.values[0]['stat-list'];
+            if (statList && statList.stat && Array.isArray(statList.stat)) {
+              // Response'dan gelen stat'ları bir map'e al
+              const responseStatsMap = new Map();
+              statList.stat.forEach(stat => {
+                const statKey = stat.statKey?.key;
+                if (statKey) {
+                  const value = stat.data && stat.data.length > 0 ? stat.data[0] : null;
+                  const timestamp = stat.timestamps && stat.timestamps.length > 0 ? stat.timestamps[0] : null;
+                  responseStatsMap.set(statKey, { value, timestamp });
+                }
+              });
+              
+              // extractedStats'ı güncelle - sadece targetStatKeys'deki statKey'ler için
+              extractedStats.forEach((stat, index) => {
+                const responseStat = responseStatsMap.get(stat.statKey);
+                if (responseStat) {
+                  extractedStats[index] = {
+                    title: stat.title,
+                    statKey: stat.statKey,
+                    value: responseStat.value,
+                    timestamp: responseStat.timestamp
+                  };
+                }
+              });
+            }
+          }
+          
+          performanceValuesData = extractedStats;
+          console.log('Extracted performance stats (always 8):', extractedStats);
+          
+          // ChatGPT'ye yorum için gönder - Her zaman gönder (8 statKey her zaman var)
+          // Özel fonksiyon kullan: API endpoint üretme, sadece analiz yap
+          const statsJson = JSON.stringify(extractedStats, null, 2);
+          
+          performanceValuesComment = await analyzePerformanceValuesFromGPT(statsJson);
+          console.log('ChatGPT yorumu:', performanceValuesComment);
+          
+          // Bulunan değer sayısını hesapla
+          const foundStatsCount = extractedStats.filter(stat => stat.value !== null && stat.value !== undefined).length;
+          gptResponse = `Performans değerleri başarıyla alındı. ${foundStatsCount} metrik değeri bulundu, ${extractedStats.length} metrik aşağıda gösteriliyor.`;
+        } catch (error) {
+          console.error('Performans değerleri alınırken hata:', error);
+          gptResponse = `Performans değerleri alınırken bir hata oluştu: ${error.message}`;
+        }
+      }
+      
+      console.log('--- PERFORMANCE VALUES REQUEST END ---');
+    } else if (isMetricDescriptionRequest) {
       // Metrik açıklaması için özel format: "Resource tipi yani, resourceKind {VirtualMachine} olan Bu vROPS metrik ne işe yarar: mem|workload. Kısa ve öz bir açıklama yap, Türkçe olarak."
       let enhancedMessage = message;
       if (resourceKindKey) {
@@ -99,7 +213,9 @@ router.post('/message', authenticateToken, async (req, res) => {
       gptResponse = await getMetricDescriptionFromGPT(enhancedMessage);
     } else {
       // Normal chat için standart fonksiyonu kullan
-      gptResponse = await chatWithGPT(message);
+      // User message'a zaman bilgisini ekle (system prompt cache için)
+      const messageWithTime = `${message}\n\nŞu anki zaman (UTC epoch ms): ${Date.now()}`;
+      gptResponse = await chatWithGPT(messageWithTime);
     }
     
     // Environment değişkenlerini geri yükle
@@ -115,7 +231,99 @@ router.post('/message', authenticateToken, async (req, res) => {
     const vropsRequest = buildVropsRequestFromGptPath(gptResponse);
     console.log('[CHAT] vropsRequest parse edildi:', JSON.stringify(vropsRequest, null, 2));
 
-    // 3) Varsa vROPS API request'ini çalıştırmayı dene (yoksa hiç çağrı yapma)
+    // 3) Eğer endpoint /api/resources/stats/topn ise ve resourceId parametreleri eksikse, tüm VM'leri çek
+    if (vropsRequest && vropsRequest.endpoint && vropsRequest.endpoint.includes('/resources/stats/topn')) {
+      // resourceId parametrelerini kontrol et
+      const hasResourceIds = vropsRequest.params && Object.keys(vropsRequest.params).some(key => key.startsWith('resourceId'));
+      
+      if (!hasResourceIds) {
+        console.log('[CHAT] TopN endpoint tespit edildi, resourceId parametreleri eksik. Tüm VM\'ler çekiliyor...');
+        
+        try {
+          // Tüm VM'leri listeleyen endpoint'i çalıştır
+          const vmListRequest = {
+            endpoint: '/api/resources',
+            method: 'GET',
+            params: {
+              page: 0,
+              pageSize: 1000,
+              resourceKind: 'virtualmachine',
+              _no_links: 'true'
+            },
+            body: {}
+          };
+          
+          const vmListResponse = await executeVropsRequest(vmListRequest);
+          
+          // VM ID'lerini ve isimlerini topla (Map: resourceId -> name)
+          const vmIds = [];
+          const vmNameMap = new Map(); // VM isimlerini saklamak için Map
+          
+          if (vmListResponse.data && vmListResponse.data.resourceList && Array.isArray(vmListResponse.data.resourceList)) {
+            vmListResponse.data.resourceList.forEach(resource => {
+              if (resource.identifier) {
+                vmIds.push(resource.identifier);
+                // VM ismini resourceKey.name'den al
+                const vmName = resource.resourceKey?.name || resource.identifier;
+                vmNameMap.set(resource.identifier, vmName);
+              }
+            });
+          }
+          
+          console.log(`[CHAT] ${vmIds.length} adet VM ID'si bulundu`);
+          
+          // VM isimlerini requestConfig'e ekle (parseTopNStatsResponse'da kullanılacak)
+          // Map'i normal objeye çevir (JSON serialize için)
+          const vmNameMapObj = {};
+          vmNameMap.forEach((name, id) => {
+            vmNameMapObj[id] = name;
+          });
+          
+          if (!vropsRequest.vmNameMap) {
+            vropsRequest.vmNameMap = vmNameMapObj;
+          } else {
+            // Eğer zaten bir vmNameMap varsa birleştir
+            Object.assign(vropsRequest.vmNameMap, vmNameMapObj);
+          }
+          
+          // VM ID'lerini vropsRequest params'ına ekle
+          if (vmIds.length > 0) {
+            // vROPS API'si resourceId parametrelerini query string'de tekrar eden parametreler olarak bekliyor
+            // axios otomatik olarak array'leri query string'e çevirir: resourceId=id1&resourceId=id2&resourceId=id3
+            // Eğer zaten bir resourceId varsa, onu da array'e dahil et
+            if (vropsRequest.params.resourceId) {
+              // Mevcut resourceId'yi array'e çevir
+              const existingResourceId = vropsRequest.params.resourceId;
+              if (!Array.isArray(existingResourceId)) {
+                vropsRequest.params.resourceId = [existingResourceId];
+              }
+              // Yeni ID'leri ekle
+              vropsRequest.params.resourceId = [...vropsRequest.params.resourceId, ...vmIds];
+            } else {
+              // Yeni array oluştur
+              vropsRequest.params.resourceId = vmIds;
+            }
+            
+            console.log(`[CHAT] ${vmIds.length} adet resourceId parametresi eklendi (toplam: ${vropsRequest.params.resourceId.length})`);
+            console.log('[CHAT] Güncellenmiş vropsRequest params (ilk 5 resourceId):', {
+              ...vropsRequest.params,
+              resourceId: Array.isArray(vropsRequest.params.resourceId) 
+                ? vropsRequest.params.resourceId.slice(0, 5) 
+                : vropsRequest.params.resourceId
+            });
+          } else {
+            console.warn('[CHAT] Hiç VM ID\'si bulunamadı');
+          }
+        } catch (vmListErr) {
+          console.error('[CHAT] VM listesi çekilirken hata:', vmListErr);
+          // Hata olsa bile devam et, belki ChatGPT'nin döndürdüğü endpoint zaten çalışır
+        }
+      } else {
+        console.log('[CHAT] TopN endpoint tespit edildi, resourceId parametreleri mevcut');
+      }
+    }
+
+    // 4) Varsa vROPS API request'ini çalıştırmayı dene (yoksa hiç çağrı yapma)
     let vropsResult = null;
     let vropsError = null;
     let vropsExecuted = false; // Bu istek için gerçekten vROPS çağrısı yapıldı mı bilgisini tutar
@@ -217,6 +425,8 @@ router.post('/message', authenticateToken, async (req, res) => {
       displayType: displayType, // Frontend'e nasıl göstereceğini söyle ('table' veya 'card')
       vropsError: vropsError,
       vropsExecuted: vropsExecuted,
+      performanceValuesData: performanceValuesData, // Performans değerleri verisi
+      performanceValuesComment: performanceValuesComment, // ChatGPT yorumu
       userMessageId: userMessageResult.insertId,
       assistantMessageId: assistantMessageResult.insertId
     });
@@ -372,7 +582,8 @@ router.post('/analyze-performance', authenticateToken, async (req, res) => {
         try {
           const extractPrompt = `Aşağıdaki soruda VM (sanal sunucu) ismini çıkar. Sadece VM ismini döndür, başka bir şey yazma. Eğer VM ismi yoksa "BULUNAMADI" yaz.
         
-Soru: ${message}`;
+Soru: ${message}
+Şu anki zaman (UTC epoch ms): ${Date.now()}`;
           
           const extractedName = await chatWithGPT(extractPrompt);
           targetVMName = extractedName.trim();

@@ -5,6 +5,65 @@ import axios from 'axios';
 import { getChats, deleteChat, getFavorites, removeFromFavorites, searchChats, deleteAllChats, deleteBulkChats, deleteBulkFavorites, deleteAllFavorites, getChat } from '../services/api';
 import { IoAddCircleOutline } from "react-icons/io5";
 
+// Dialog component - Portal ile uyumlu
+function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmText = 'Evet', cancelText = 'İptal', type = 'warning' }) {
+  if (!isOpen) return null;
+
+  const confirmColor = type === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-red-600';
+
+  return (
+    <div className="fixed inset-0 z-[10003] flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">{title}</h3>
+          <p className="text-xs text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={() => {
+                onConfirm();
+                onClose();
+              }}
+              className={`px-4 py-2 text-xs text-white rounded-md transition-colors ${confirmColor}`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Alert dialog component
+function AlertDialog({ isOpen, onClose, title, message, buttonText = 'Tamam' }) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[10003] flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">{title}</h3>
+          <p className="text-xs text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+          <div className="flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs bg-primary text-white rounded-md hover:bg-red-600 transition-colors"
+            >
+              {buttonText}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Hamburger menü komponenti - Kullanıcı işlemleri için
 function UserActionsMenu({ userId, onDelete }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -49,7 +108,7 @@ function UserActionsMenu({ userId, onDelete }) {
       {isOpen && (
         <div 
           ref={menuRef}
-          className="fixed w-32 bg-white border border-gray-200 rounded-md shadow-lg z-[10001]"
+          className="fixed w-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[10001]"
           style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
         >
           <button
@@ -57,9 +116,9 @@ function UserActionsMenu({ userId, onDelete }) {
               onDelete(userId);
               setIsOpen(false);
             }}
-            className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-md"
+            className="w-full px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-1.5 rounded-md"
           >
-            <span className="material-symbols-outlined text-[16px]">delete</span>
+            <span className="material-symbols-outlined text-[14px]">delete</span>
             <span>Sil</span>
           </button>
         </div>
@@ -112,7 +171,7 @@ function ModelActionsMenu({ model, onEdit, onDelete }) {
       {isOpen && (
         <div 
           ref={menuRef}
-          className="fixed w-36 bg-white border border-gray-200 rounded-md shadow-lg z-[10001]"
+          className="fixed w-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[10001]"
           style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
         >
           <button
@@ -120,9 +179,9 @@ function ModelActionsMenu({ model, onEdit, onDelete }) {
               onEdit(model);
               setIsOpen(false);
             }}
-            className="w-full px-3 py-2 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center gap-2 rounded-md"
+            className="w-full px-2 py-1.5 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center gap-1.5 rounded-md"
           >
-            <span className="material-symbols-outlined text-[16px]">edit</span>
+            <span className="material-symbols-outlined text-[14px]">edit</span>
             <span>Düzenle</span>
           </button>
           <button
@@ -130,9 +189,9 @@ function ModelActionsMenu({ model, onEdit, onDelete }) {
               onDelete(model.id);
               setIsOpen(false);
             }}
-            className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-md"
+            className="w-full px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-1.5 rounded-md"
           >
-            <span className="material-symbols-outlined text-[16px]">delete</span>
+            <span className="material-symbols-outlined text-[14px]">delete</span>
             <span>Sil</span>
           </button>
         </div>
@@ -185,7 +244,7 @@ function VropsActionsMenu({ config, onEdit, onDelete }) {
       {isOpen && (
         <div 
           ref={menuRef}
-          className="fixed w-36 bg-white border border-gray-200 rounded-md shadow-lg z-[10001]"
+          className="fixed w-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[10001]"
           style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
         >
           <button
@@ -193,9 +252,9 @@ function VropsActionsMenu({ config, onEdit, onDelete }) {
               onEdit(config);
               setIsOpen(false);
             }}
-            className="w-full px-3 py-2 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center gap-2 rounded-md"
+            className="w-full px-2 py-1.5 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center gap-1.5 rounded-md"
           >
-            <span className="material-symbols-outlined text-[16px]">edit</span>
+            <span className="material-symbols-outlined text-[14px]">edit</span>
             <span>Düzenle</span>
           </button>
           <button
@@ -203,9 +262,9 @@ function VropsActionsMenu({ config, onEdit, onDelete }) {
               onDelete(config.id);
               setIsOpen(false);
             }}
-            className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-md"
+            className="w-full px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-1.5 rounded-md"
           >
-            <span className="material-symbols-outlined text-[16px]">delete</span>
+            <span className="material-symbols-outlined text-[14px]">delete</span>
             <span>Sil</span>
           </button>
         </div>
@@ -216,9 +275,9 @@ function VropsActionsMenu({ config, onEdit, onDelete }) {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
+function SettingsPage({ isOpen, onClose, onChatSelect, onDataChanged, initialTab }) {
   const { user, isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState(initialTab || 'users'); // 'users', 'ai-models', 'vrops', 'history', 'favorites'
+  const [activeTab, setActiveTab] = useState(initialTab || 'users'); // 'users', 'ai-models', 'vrops', 'history', 'favorites', 'about'
   
   // Kullanıcı yönetimi state'leri
   const [users, setUsers] = useState([]);
@@ -255,6 +314,10 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
   const [favoritesCurrentPage, setFavoritesCurrentPage] = useState(1);
   const [favoritesTotal, setFavoritesTotal] = useState(0);
   const [selectedFavoriteIds, setSelectedFavoriteIds] = useState(new Set());
+
+  // Dialog state'leri
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'warning' });
+  const [alertDialog, setAlertDialog] = useState({ isOpen: false, title: '', message: '' });
 
   // initialTab değiştiğinde activeTab'i güncelle
   useEffect(() => {
@@ -329,33 +392,38 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
-        alert('Kullanıcı başarıyla oluşturuldu.');
+        setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'Kullanıcı başarıyla oluşturuldu.' });
         setShowUserForm(false);
         setUserForm({ username: '', password: '', email: '', name: '', surname: '', isAdmin: false });
         loadUsers();
       }
     } catch (error) {
-      alert(error.response?.data?.error || 'Kullanıcı oluşturulurken bir hata oluştu.');
+      setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'Kullanıcı oluşturulurken bir hata oluştu.' });
     }
   };
 
   // Kullanıcı sil
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')) {
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.delete(`${API_BASE_URL}/api/auth/users/${userId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) {
-        alert('Kullanıcı başarıyla silindi.');
-        loadUsers();
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Kullanıcı Sil',
+      message: 'Bu kullanıcıyı silmek istediğinize emin misiniz?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await axios.delete(`${API_BASE_URL}/api/auth/users/${userId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (response.data.success) {
+            setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'Kullanıcı başarıyla silindi.' });
+            loadUsers();
+          }
+        } catch (error) {
+          setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'Kullanıcı silinirken bir hata oluştu.' });
+        }
       }
-    } catch (error) {
-      alert(error.response?.data?.error || 'Kullanıcı silinirken bir hata oluştu.');
-    }
+    });
   };
 
   // AI modeli oluştur
@@ -367,13 +435,13 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
-        alert('AI modeli başarıyla oluşturuldu.');
+        setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'AI modeli başarıyla oluşturuldu.' });
         setShowModelForm(false);
         setModelForm({ name: '', apiToken: '', modelVersion: '', baseUrl: 'https://api.openai.com/v1' });
         loadAiModels();
       }
     } catch (error) {
-      alert(error.response?.data?.error || 'AI modeli oluşturulurken bir hata oluştu.');
+      setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'AI modeli oluşturulurken bir hata oluştu.' });
     }
   };
 
@@ -386,34 +454,39 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
-        alert('AI modeli başarıyla güncellendi.');
+        setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'AI modeli başarıyla güncellendi.' });
         setShowModelForm(false);
         setEditingModel(null);
         setModelForm({ name: '', apiToken: '', modelVersion: '', baseUrl: 'https://api.openai.com/v1' });
         loadAiModels();
       }
     } catch (error) {
-      alert(error.response?.data?.error || 'AI modeli güncellenirken bir hata oluştu.');
+      setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'AI modeli güncellenirken bir hata oluştu.' });
     }
   };
 
   // AI modeli sil
   const handleDeleteModel = async (modelId) => {
-    if (!window.confirm('Bu AI modelini silmek istediğinize emin misiniz?')) {
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.delete(`${API_BASE_URL}/api/ai-models/${modelId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) {
-        alert('AI modeli başarıyla silindi.');
-        loadAiModels();
+    setConfirmDialog({
+      isOpen: true,
+      title: 'AI Modeli Sil',
+      message: 'Bu AI modelini silmek istediğinize emin misiniz?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await axios.delete(`${API_BASE_URL}/api/ai-models/${modelId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (response.data.success) {
+            setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'AI modeli başarıyla silindi.' });
+            loadAiModels();
+          }
+        } catch (error) {
+          setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'AI modeli silinirken bir hata oluştu.' });
+        }
       }
-    } catch (error) {
-      alert(error.response?.data?.error || 'AI modeli silinirken bir hata oluştu.');
-    }
+    });
   };
 
   // Model düzenleme formunu aç
@@ -455,13 +528,13 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
-        alert('vROPS konfigürasyonu başarıyla oluşturuldu.');
+        setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'vROPS konfigürasyonu başarıyla oluşturuldu.' });
         setShowVropsForm(false);
         setVropsForm({ name: '', url: '', username: '', password: '', description: '', isActive: true });
         loadVropsConfigs();
       }
     } catch (error) {
-      alert(error.response?.data?.error || 'vROPS konfigürasyonu oluşturulurken bir hata oluştu.');
+      setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'vROPS konfigürasyonu oluşturulurken bir hata oluştu.' });
     }
   };
 
@@ -474,34 +547,39 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
-        alert('vROPS konfigürasyonu başarıyla güncellendi.');
+        setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'vROPS konfigürasyonu başarıyla güncellendi.' });
         setShowVropsForm(false);
         setEditingVrops(null);
         setVropsForm({ name: '', url: '', username: '', password: '', description: '', isActive: true });
         loadVropsConfigs();
       }
     } catch (error) {
-      alert(error.response?.data?.error || 'vROPS konfigürasyonu güncellenirken bir hata oluştu.');
+      setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'vROPS konfigürasyonu güncellenirken bir hata oluştu.' });
     }
   };
 
   // vROPS konfigürasyonu sil
   const handleDeleteVrops = async (configId) => {
-    if (!window.confirm('Bu vROPS konfigürasyonunu silmek istediğinize emin misiniz?')) {
-      return;
-    }
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.delete(`${API_BASE_URL}/api/vrops-config/${configId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) {
-        alert('vROPS konfigürasyonu başarıyla silindi.');
-        loadVropsConfigs();
+    setConfirmDialog({
+      isOpen: true,
+      title: 'vROPS Konfigürasyonu Sil',
+      message: 'Bu vROPS konfigürasyonunu silmek istediğinize emin misiniz?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await axios.delete(`${API_BASE_URL}/api/vrops-config/${configId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (response.data.success) {
+            setAlertDialog({ isOpen: true, title: 'Başarılı', message: 'vROPS konfigürasyonu başarıyla silindi.' });
+            loadVropsConfigs();
+          }
+        } catch (error) {
+          setAlertDialog({ isOpen: true, title: 'Hata', message: error.response?.data?.error || 'vROPS konfigürasyonu silinirken bir hata oluştu.' });
+        }
       }
-    } catch (error) {
-      alert(error.response?.data?.error || 'vROPS konfigürasyonu silinirken bir hata oluştu.');
-    }
+    });
   };
 
   // vROPS düzenleme formunu aç
@@ -570,47 +648,77 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
 
   const handleBulkDeleteChats = async () => {
     if (selectedChatIds.size === 0) {
-      alert('Lütfen silmek istediğiniz sohbetleri seçin.');
+      setAlertDialog({ isOpen: true, title: 'Uyarı', message: 'Lütfen silmek istediğiniz sohbetleri seçin.' });
       return;
     }
-    if (window.confirm(`${selectedChatIds.size} sohbeti silmek istediğinize emin misiniz?`)) {
-      try {
-        await deleteBulkChats(Array.from(selectedChatIds));
-        setSelectedChatIds(new Set());
-        await loadChats();
-        if (historySearchQuery.trim()) {
-          await handleHistorySearch(historySearchQuery);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Sohbetleri Sil',
+      message: `${selectedChatIds.size} sohbeti silmek istediğinize emin misiniz?`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteBulkChats(Array.from(selectedChatIds));
+          setSelectedChatIds(new Set());
+          await loadChats();
+          if (historySearchQuery.trim()) {
+            await handleHistorySearch(historySearchQuery);
+          }
+          // ChatPage'deki verileri güncelle
+          if (onDataChanged) {
+            await onDataChanged();
+          }
+        } catch (error) {
+          console.error('Bulk delete chats error:', error);
         }
-      } catch (error) {
-        console.error('Bulk delete chats error:', error);
       }
-    }
+    });
   };
 
   const handleDeleteAllChats = async () => {
-    if (window.confirm('Tüm sohbetleri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) {
-      try {
-        await deleteAllChats();
-        setSelectedChatIds(new Set());
-        await loadChats();
-      } catch (error) {
-        console.error('Delete all chats error:', error);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tüm Sohbetleri Sil',
+      message: 'Tüm sohbetleri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteAllChats();
+          setSelectedChatIds(new Set());
+          await loadChats();
+          // ChatPage'deki verileri güncelle
+          if (onDataChanged) {
+            await onDataChanged();
+          }
+        } catch (error) {
+          console.error('Delete all chats error:', error);
+        }
       }
-    }
+    });
   };
 
   const handleChatDelete = async (chatId) => {
-    if (window.confirm('Bu sohbeti silmek istediğinize emin misiniz?')) {
-      try {
-        await deleteChat(chatId);
-        await loadChats();
-        if (historySearchQuery.trim()) {
-          await handleHistorySearch(historySearchQuery);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Sohbet Sil',
+      message: 'Bu sohbeti silmek istediğinize emin misiniz?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteChat(chatId);
+          await loadChats();
+          if (historySearchQuery.trim()) {
+            await handleHistorySearch(historySearchQuery);
+          }
+          // ChatPage'deki verileri güncelle
+          if (onDataChanged) {
+            await onDataChanged();
+          }
+        } catch (error) {
+          console.error('Delete chat error:', error);
         }
-      } catch (error) {
-        console.error('Delete chat error:', error);
       }
-    }
+    });
   };
 
   const loadHistoryChatMessages = async (chatId) => {
@@ -706,41 +814,71 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
 
   const handleBulkDeleteFavorites = async () => {
     if (selectedFavoriteIds.size === 0) {
-      alert('Lütfen silmek istediğiniz favorileri seçin.');
+      setAlertDialog({ isOpen: true, title: 'Uyarı', message: 'Lütfen silmek istediğiniz favorileri seçin.' });
       return;
     }
-    if (window.confirm(`${selectedFavoriteIds.size} favoriyi silmek istediğinize emin misiniz?`)) {
-      try {
-        await deleteBulkFavorites(Array.from(selectedFavoriteIds));
-        setSelectedFavoriteIds(new Set());
-        await loadFavorites();
-      } catch (error) {
-        console.error('Bulk delete favorites error:', error);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Favorileri Sil',
+      message: `${selectedFavoriteIds.size} favoriyi silmek istediğinize emin misiniz?`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteBulkFavorites(Array.from(selectedFavoriteIds));
+          setSelectedFavoriteIds(new Set());
+          await loadFavorites();
+          // ChatPage'deki verileri güncelle
+          if (onDataChanged) {
+            await onDataChanged();
+          }
+        } catch (error) {
+          console.error('Bulk delete favorites error:', error);
+        }
       }
-    }
+    });
   };
 
   const handleDeleteAllFavorites = async () => {
-    if (window.confirm('Tüm favorileri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) {
-      try {
-        await deleteAllFavorites();
-        setSelectedFavoriteIds(new Set());
-        await loadFavorites();
-      } catch (error) {
-        console.error('Delete all favorites error:', error);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tüm Favorileri Sil',
+      message: 'Tüm favorileri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteAllFavorites();
+          setSelectedFavoriteIds(new Set());
+          await loadFavorites();
+          // ChatPage'deki verileri güncelle
+          if (onDataChanged) {
+            await onDataChanged();
+          }
+        } catch (error) {
+          console.error('Delete all favorites error:', error);
+        }
       }
-    }
+    });
   };
 
   const handleRemoveFavorite = async (favoriteId) => {
-    if (window.confirm('Bu favoriyi kaldırmak istediğinize emin misiniz?')) {
-      try {
-        await removeFromFavorites(favoriteId);
-        await loadFavorites();
-      } catch (error) {
-        console.error('Remove favorite error:', error);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Favori Kaldır',
+      message: 'Bu favoriyi kaldırmak istediğinize emin misiniz?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await removeFromFavorites(favoriteId);
+          await loadFavorites();
+          // ChatPage'deki verileri güncelle
+          if (onDataChanged) {
+            await onDataChanged();
+          }
+        } catch (error) {
+          console.error('Remove favorite error:', error);
+        }
       }
-    }
+    });
   };
 
   if (!isOpen) return null;
@@ -748,15 +886,15 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
       <div
-        className="bg-white rounded-3xl shadow-2xl border-[3px] border-[#e7e7e7] max-w-[1024px] w-full mx-4 h-[calc(85vh-250px)] flex overflow-hidden relative z-[10000]"
+        className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border-[3px] border-[#e7e7e7] dark:border-gray-700 max-w-[1024px] w-full mx-4 h-[calc(85vh-250px)] flex overflow-hidden relative z-[10000]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Sol Sidebar - Menüler */}
-        <aside className="w-64 flex flex-col bg-gray-50 border-r border-gray-200 flex-shrink-0">
-          <div className="h-16 flex items-center px-6 border-b border-gray-200">
+        <aside className="w-64 flex flex-col bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="h-16 flex items-center px-6 border-b border-gray-200 dark:border-gray-700">
             <button
               onClick={onClose}
-              className="text-gray-500 rounded-md p-1 mt-4"
+              className="text-gray-500 dark:text-gray-400 rounded-md p-1 mt-4"
             >
               <span className="material-symbols-outlined text-xl">close</span>
             </button>
@@ -766,8 +904,8 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               onClick={() => setActiveTab('users')}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-medium rounded-lg transition-colors ${
                 activeTab === 'users'
-                  ? 'bg-gray-200 text-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-700'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">people</span>
@@ -777,8 +915,8 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               onClick={() => setActiveTab('ai-models')}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-medium rounded-lg transition-colors ${
                 activeTab === 'ai-models'
-                  ? 'bg-gray-200 text-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-700'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
@@ -788,8 +926,8 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               onClick={() => setActiveTab('vrops')}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-medium rounded-lg transition-colors ${
                 activeTab === 'vrops'
-                  ? 'bg-gray-200 text-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-700'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">cloud</span>
@@ -799,8 +937,8 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               onClick={() => setActiveTab('history')}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-medium rounded-lg transition-colors ${
                 activeTab === 'history'
-                  ? 'bg-gray-200 text-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-700'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">history</span>
@@ -810,38 +948,50 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               onClick={() => setActiveTab('favorites')}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-medium rounded-lg transition-colors ${
                 activeTab === 'favorites'
-                  ? 'bg-gray-200 text-gray-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-700'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
               }`}
             >
               <span className="material-symbols-outlined text-[20px]">star</span>
               Favoriler
             </button>
+            <button
+              onClick={() => setActiveTab('about')}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-medium rounded-lg transition-colors ${
+                activeTab === 'about'
+                  ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[20px]">info</span>
+              Hakkında
+            </button>
           </nav>
         </aside>
 
         {/* Sağ İçerik Alanı */}
-        <main className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden">
+        <main className="flex-1 flex flex-col min-w-0 bg-white dark:bg-gray-900 overflow-hidden">
           <div className="flex-1 overflow-y-auto p-8">
-            <h1 className="text-lg font-medium mb-16 text-gray-700">
+            <h1 className="text-lg font-medium mb-16 text-gray-700 dark:text-gray-100">
               {activeTab === 'users' && 'Kullanıcı Yönetimi'}
               {activeTab === 'ai-models' && 'AI Model Yönetimi'}
               {activeTab === 'vrops' && 'vROPS Yönetimi'}
               {activeTab === 'history' && 'Geçmiş Sohbetler'}
               {activeTab === 'favorites' && 'Favoriler'}
+              {activeTab === 'about' && 'Hakkında'}
             </h1>
 
           {/* Kullanıcı Yönetimi */}
           {activeTab === 'users' && (
             <div>
               <div className="flex justify-between items-center mb-3">
-                <h2 className="text-sm font-medium text-gray-700">Kullanıcılar</h2>
+                <h2 className="text-sm font-medium text-gray-700 dark:text-gray-100">Kullanıcılar</h2>
                 <button
                   onClick={() => {
                     setShowUserForm(true);
                     setUserForm({ username: '', password: '', email: '', name: '', surname: '', isAdmin: false });
                   }}
-                  className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+                  className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
                   title="Yeni Kullanıcı"
                 >
                   <IoAddCircleOutline className="text-[24px]" />
@@ -856,52 +1006,52 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Ad Soyad
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Kullanıcı Adı
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           E-posta
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Yetki
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Oluşturulma
                         </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           İşlemler
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white">
+                    <tbody className="bg-white dark:bg-gray-900">
                       {users.map((u) => (
-                        <tr key={u.id} className="border-b border-gray-100">
-                          <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
+                        <tr key={u.id} className="border-b border-gray-100 dark:border-gray-700">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-700 dark:text-gray-200">
                             {u.name || u.surname ? `${u.name || ''} ${u.surname || ''}`.trim() : '-'}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {u.username}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {u.email || '-'}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {u.isAdmin ? (
-                              <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-semibold">
+                              <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 rounded text-xs font-semibold">
                                 Admin
                               </span>
                             ) : (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">
+                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded text-xs font-semibold">
                                 Kullanıcı
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {new Date(u.createdAt).toLocaleDateString('tr-TR')}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-right text-xs font-medium">
@@ -922,14 +1072,14 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
           {activeTab === 'ai-models' && (
             <div>
               <div className="flex justify-between items-center mb-3">
-                <h2 className="text-sm font-medium text-gray-700">AI Modelleri</h2>
+                <h2 className="text-sm font-medium text-gray-700 dark:text-gray-100">AI Modelleri</h2>
                 <button
                   onClick={() => {
                     setShowModelForm(true);
                     setEditingModel(null);
                     setModelForm({ name: '', apiToken: '', modelVersion: '', baseUrl: 'https://api.openai.com/v1' });
                   }}
-                  className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+                  className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
                   title="Yeni Model"
                 >
                   <IoAddCircleOutline className="text-[24px]" />
@@ -944,41 +1094,41 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Model İsmi
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Model Versiyonu
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Base URL
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Durum
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Oluşturulma
                         </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           İşlemler
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white">
+                    <tbody className="bg-white dark:bg-gray-900">
                       {aiModels.map((model) => (
-                        <tr key={model.id} className="border-b border-gray-100">
-                          <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
+                        <tr key={model.id} className="border-b border-gray-100 dark:border-gray-700">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-700 dark:text-gray-200">
                             {model.name}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {model.modelVersion}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {model.baseUrl}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {model.isActive ? (
                               <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-semibold">
                                 Aktif
@@ -989,7 +1139,7 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {new Date(model.createdAt).toLocaleDateString('tr-TR')}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-right text-xs font-medium">
@@ -1012,14 +1162,14 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
           {activeTab === 'vrops' && (
             <div>
               <div className="flex justify-between items-center mb-3">
-                <h2 className="text-sm font-medium text-gray-700">vROPS Konfigürasyonları</h2>
+                <h2 className="text-sm font-medium text-gray-700 dark:text-gray-100">vROPS Konfigürasyonları</h2>
                 <button
                   onClick={() => {
                     setShowVropsForm(true);
                     setEditingVrops(null);
                     setVropsForm({ name: '', url: '', username: '', password: '', description: '', isActive: true });
                   }}
-                  className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+                  className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
                   title="Yeni vROPS"
                 >
                   <IoAddCircleOutline className="text-[24px]" />
@@ -1034,46 +1184,46 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
                       <tr>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           vROPS Adı
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           URL
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Durum
                         </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 dark:text-gray-300 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           Oluşturulma
                         </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
                           İşlemler
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white">
+                    <tbody className="bg-white dark:bg-gray-900">
                       {vropsConfigs.map((config) => (
-                        <tr key={config.id} className="border-b border-gray-100">
-                          <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-700">
+                        <tr key={config.id} className="border-b border-gray-100 dark:border-gray-700">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs font-medium text-gray-700 dark:text-gray-200">
                             {config.name}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {config.url}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {config.isActive ? (
-                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-semibold">
+                              <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded text-xs font-semibold">
                                 Aktif
                               </span>
                             ) : (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs font-semibold">
+                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded text-xs font-semibold">
                                 Pasif
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 dark:text-gray-300">
                             {new Date(config.createdAt).toLocaleDateString('tr-TR')}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-right text-xs font-medium">
@@ -1107,9 +1257,9 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                   value={historySearchQuery}
                   onChange={(e) => handleHistorySearch(e.target.value)}
                   placeholder="Sohbet içerisinde ara..."
-                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-xs"
+                  className="w-full px-4 py-2 pl-10 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
                 />
-                <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-[18px]">search</span>
+                <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 dark:text-gray-500 text-[18px]">search</span>
               </div>
 
               {/* Action Buttons */}
@@ -1118,18 +1268,18 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={selectAllChats}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                     >
                       Tümünü Seç
                     </button>
                     <button
                       onClick={deselectAllChats}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                     >
                       Seçimi Kaldır
                     </button>
                     {selectedChatIds.size > 0 && (
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
                         {selectedChatIds.size} sohbet seçili
                       </span>
                     )}
@@ -1154,20 +1304,20 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               )}
 
               {/* Chat List */}
-              <div className="border border-gray-100 rounded-md overflow-hidden">
+              <div className="border border-gray-100 dark:border-gray-700 rounded-md overflow-hidden">
                 <div className="overflow-y-auto max-h-[50vh]">
                   {historySearchQuery.trim().length === 0 ? (
                     chats.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500">
+                      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                         Henüz sohbet yok.
                       </div>
                     ) : (
-                      <div className="divide-y divide-gray-100">
+                      <div className="divide-y divide-gray-100 dark:divide-gray-700">
                         {chats.map(chat => (
                           <div
                             key={chat.id}
-                            className={`p-3 hover:bg-gray-50 transition-colors ${
-                              selectedChatIds.has(chat.id) ? 'bg-blue-50' : ''
+                            className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                              selectedChatIds.has(chat.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                             }`}
                           >
                             <div className="flex items-center gap-3">
@@ -1184,8 +1334,8 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                                 }}
                                 className="flex-1 text-left"
                               >
-                                <p className="text-xs font-medium text-gray-700">{chat.title || 'Yeni Sohbet'}</p>
-                                <p className="text-[10px] text-gray-600 mt-1">
+                                <p className="text-xs font-medium text-gray-700 dark:text-gray-200">{chat.title || 'Yeni Sohbet'}</p>
+                                <p className="text-[10px] text-gray-600 dark:text-gray-400 mt-1">
                                   {new Date(chat.updatedAt).toLocaleDateString('tr-TR', {
                                     day: 'numeric',
                                     month: 'short',
@@ -1238,16 +1388,16 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                       </div>
                     )
                   ) : historyChats.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
+                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                       Arama sonucu bulunamadı.
                     </div>
                   ) : (
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
                       {historyChats.map(chat => (
                         <div
                           key={chat.id}
-                          className={`p-3 hover:bg-gray-50 transition-colors ${
-                            selectedChatIds.has(chat.id) ? 'bg-blue-50' : ''
+                          className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                            selectedChatIds.has(chat.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -1264,8 +1414,8 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                               }}
                               className="flex-1 text-left"
                             >
-                              <p className="text-xs font-medium text-gray-700">{chat.title || 'Yeni Sohbet'}</p>
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-xs font-medium text-gray-700 dark:text-gray-200">{chat.title || 'Yeni Sohbet'}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                 {new Date(chat.updatedAt).toLocaleDateString('tr-TR', {
                                   day: 'numeric',
                                   month: 'short',
@@ -1277,7 +1427,7 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                             </button>
                             <button
                               onClick={() => loadHistoryChatMessages(chat.id)}
-                              className="p-1 hover:bg-gray-100 rounded text-gray-600 transition-colors"
+                              className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 transition-colors"
                               title="Mesajları göster"
                             >
                               <span className={`material-symbols-outlined text-[18px] transition-transform ${
@@ -1286,20 +1436,20 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                             </button>
                             <button
                               onClick={() => handleChatDelete(chat.id)}
-                              className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
+                              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-600 dark:text-red-400 transition-colors"
                               title="Sil"
                             >
                               <span className="material-symbols-outlined text-[18px]">delete</span>
                             </button>
                           </div>
                           {expandedHistoryChatId === chat.id && historyChatMessages[chat.id] && (
-                            <div className="mt-2 pt-2 border-t border-gray-100 bg-gray-50 p-2 max-h-[200px] overflow-y-auto rounded-md">
+                            <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-2 max-h-[200px] overflow-y-auto rounded-md">
                               <div className="space-y-2">
                                 {historyChatMessages[chat.id].map((msg, idx) => (
                                   <div
                                     key={msg.id || idx}
                                     className={`p-2 rounded text-xs ${
-                                      msg.role === 'user' ? 'bg-blue-100 text-blue-900' : 'bg-gray-100 text-gray-700'
+                                      msg.role === 'user' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-200' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
                                     }`}
                                   >
                                     <div className="font-semibold mb-1">
@@ -1332,9 +1482,9 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                   value={favoritesSearchQuery}
                   onChange={(e) => handleFavoritesSearch(e.target.value)}
                   placeholder="Favorilerde ara..."
-                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-xs"
+                  className="w-full px-4 py-2 pl-10 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                 />
-                <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-[18px]">search</span>
+                <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 dark:text-gray-500 text-[18px]">search</span>
               </div>
 
               {/* Action Buttons */}
@@ -1343,18 +1493,18 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={selectAllFavorites}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                     >
                       Tümünü Seç
                     </button>
                     <button
                       onClick={deselectAllFavorites}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                     >
                       Seçimi Kaldır
                     </button>
                     {selectedFavoriteIds.size > 0 && (
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
                         {selectedFavoriteIds.size} favori seçili
                       </span>
                     )}
@@ -1363,7 +1513,7 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                     <select
                       value={favoritesPageSize}
                       onChange={(e) => handleFavoritesPageSizeChange(parseInt(e.target.value))}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     >
                       <option value={10}>10</option>
                       <option value={50}>50</option>
@@ -1388,19 +1538,19 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
               )}
 
               {/* Favorites List */}
-              <div className="border border-gray-100 rounded-md overflow-hidden">
+              <div className="border border-gray-100 dark:border-gray-700 rounded-md overflow-hidden">
                 <div className="overflow-y-auto max-h-[50vh]">
                   {favorites.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
+                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                       Henüz favori yok.
                     </div>
                   ) : (
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
                       {favorites.map(fav => (
                         <div
                           key={fav.id}
-                          className={`p-3 hover:bg-gray-50 transition-colors ${
-                            selectedFavoriteIds.has(fav.id) ? 'bg-blue-50' : ''
+                          className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                            selectedFavoriteIds.has(fav.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -1411,9 +1561,9 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                               className="w-4 h-4 text-primary rounded"
                             />
                             <div className="flex-1">
-                              <p className="text-xs text-gray-700 break-words">{fav.content}</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-200 break-words">{fav.content}</p>
                               {fav.favoritedAt && (
-                                <p className="text-[10px] text-gray-600 mt-1">
+                                <p className="text-[10px] text-gray-600 dark:text-gray-400 mt-1">
                                   {new Date(fav.favoritedAt).toLocaleDateString('tr-TR', {
                                     day: 'numeric',
                                     month: 'short',
@@ -1426,7 +1576,7 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
                             </div>
                             <button
                               onClick={() => handleRemoveFavorite(fav.id)}
-                              className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
+                              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-600 dark:text-red-400 transition-colors"
                               title="Favoriden çıkar"
                             >
                               <span className="material-symbols-outlined text-[18px]">delete</span>
@@ -1441,28 +1591,55 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
 
               {/* Pagination */}
               {favoritesTotal > favoritesPageSize && (
-                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <div className="text-xs text-gray-600">
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <div className="text-xs text-gray-600 dark:text-gray-300">
                     Toplam {favoritesTotal} favori · Sayfa {favoritesCurrentPage} / {Math.ceil(favoritesTotal / favoritesPageSize)}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleFavoritesPageChange(favoritesCurrentPage - 1)}
                       disabled={favoritesCurrentPage === 1}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                     >
                       Önceki
                     </button>
                     <button
                       onClick={() => handleFavoritesPageChange(favoritesCurrentPage + 1)}
                       disabled={favoritesCurrentPage >= Math.ceil(favoritesTotal / favoritesPageSize)}
-                      className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
                     >
                       Sonraki
                     </button>
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Hakkında */}
+          {activeTab === 'about' && (
+            <div className="space-y-6">
+              {/* Ürün Bilgileri */}
+              <div className="space-y-4">
+                <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+                  <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">Ürün Bilgileri</h2>
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-600 dark:text-gray-300">
+                      <span className="font-medium">APRO Metric AI</span> v.01 build 1937474
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Kullanım Koşulları */}
+                <div className="border-b border-gray-200 dark:border-gray-700 pb-4">
+                  <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">Kullanım Koşulları</h2>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                    Bu yazılım, VMware altyapınızın operasyonel durumunu görüntülemek ve analiz etmek için tasarlanmıştır. 
+                    Yazılımın kullanımı sırasında oluşabilecek herhangi bir sorundan dolayı sorumluluk kullanıcıya aittir. 
+                    Yazılım, ticari amaçlarla kullanılabilir ancak değiştirilmeden ve kaynak gösterilerek dağıtılabilir.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
           </div>
@@ -1772,6 +1949,24 @@ function SettingsPage({ isOpen, onClose, onChatSelect, initialTab }) {
           </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, type: 'warning' })}
+        onConfirm={confirmDialog.onConfirm || (() => {})}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+      />
+
+      {/* Alert Dialog */}
+      <AlertDialog
+        isOpen={alertDialog.isOpen}
+        onClose={() => setAlertDialog({ isOpen: false, title: '', message: '' })}
+        title={alertDialog.title}
+        message={alertDialog.message}
+      />
     </div>
   );
 }

@@ -5,6 +5,45 @@ import ChatInterface from '../components/ChatInterface';
 import SettingsPage from './SettingsPage';
 import { useAuth } from '../contexts/AuthContext';
 import { getChats, createChat, deleteChat, getFavorites, removeFromFavorites, searchChats, deleteAllChats, deleteBulkChats, deleteBulkFavorites, deleteAllFavorites, getChat } from '../services/api';
+import metricAILogo from '../metricAI-logo.png';
+import { FaRankingStar } from 'react-icons/fa6';
+import { TiStarFullOutline } from 'react-icons/ti';
+import { MdPlaylistRemove } from 'react-icons/md';
+
+// Dialog component - Portal ile uyumlu
+function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmText = 'Evet', cancelText = 'İptal', type = 'warning' }) {
+  if (!isOpen) return null;
+
+  const confirmColor = type === 'danger' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-red-600';
+
+  return (
+    <div className="fixed inset-0 z-[10003] flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-100 mb-2">{title}</h3>
+          <p className="text-xs text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-200"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={() => {
+                onConfirm();
+                onClose();
+              }}
+              className={`px-4 py-2 text-xs text-white rounded-md transition-colors ${confirmColor}`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ChatPage() {
   const [chats, setChats] = useState([]);
@@ -27,6 +66,12 @@ function ChatPage() {
   const [isExecutingFavorite, setIsExecutingFavorite] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [initialSettingsTab, setInitialSettingsTab] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, type: 'warning' });
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // localStorage'dan dark mode durumunu oku
+    const saved = localStorage.getItem('darkMode');
+    return saved ? saved === 'true' : false;
+  });
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -84,6 +129,41 @@ function ChatPage() {
   };
 
   const handleNewChat = async () => {
+    // Eğer mevcut bir chat varsa ve o chat'te hiç mesaj yoksa, yeni chat oluşturma
+    if (currentChatId) {
+      // Önce chats array'inden kontrol et (daha hızlı)
+      const currentChat = chats.find(chat => chat.id === currentChatId);
+      if (currentChat) {
+        const messageCount = currentChat.messageCount || 0;
+        // Eğer mesaj yoksa, yeni chat oluşturma, bunun yerine mevcut chat'e focus yap
+        if (messageCount === 0) {
+          // Mevcut chat'e focus yapmak için executeMessage'i boş string ile tetikle
+          // Bu ChatInterface'te input'a focus yapılmasını sağlayacak
+          setExecuteMessage('');
+          setTimeout(() => setExecuteMessage(null), 300);
+          return;
+        }
+      } else {
+        // Chat array'de yoksa, API'den kontrol et
+        try {
+          const response = await getChat(currentChatId);
+          if (response.success && response.chat) {
+            const messageCount = response.chat.messages?.length || 0;
+            // Eğer mesaj yoksa, yeni chat oluşturma, bunun yerine mevcut chat'e focus yap
+            if (messageCount === 0) {
+              setExecuteMessage('');
+              setTimeout(() => setExecuteMessage(null), 300);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Chat kontrol edilirken hata:', error);
+          // Hata durumunda devam et, yeni chat oluştur
+        }
+      }
+    }
+    
+    // Mevcut chat yoksa veya mesaj varsa yeni chat oluştur
     try {
       const response = await createChat();
       if (response.success) {
@@ -99,31 +179,65 @@ function ChatPage() {
     setCurrentChatId(chatId);
   };
 
-  const handleChatDelete = async (chatId, e) => {
-    e.stopPropagation();
-    if (window.confirm('Bu sohbeti silmek istediğinize emin misiniz?')) {
-      try {
-        await deleteChat(chatId);
-        if (currentChatId === chatId) {
-          setCurrentChatId(null);
-        }
-        await loadChats();
-      } catch (error) {
-        console.error('Delete chat error:', error);
-      }
+  // Dark mode toggle
+  const toggleDarkMode = () => {
+    const newDarkMode = !isDarkMode;
+    setIsDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', newDarkMode.toString());
+    // HTML element'e dark class ekle/çıkar
+    if (newDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   };
 
-  const handleDeleteAllChats = async () => {
-    if (window.confirm('Tüm sohbetleri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) {
-      try {
-        await deleteAllChats();
-        setCurrentChatId(null);
-        await loadChats();
-      } catch (error) {
-        console.error('Delete all chats error:', error);
-      }
+  // Dark mode durumunu uygula
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
+  }, [isDarkMode]);
+
+  const handleChatDelete = async (chatId, e) => {
+    e.stopPropagation();
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Sohbet Sil',
+      message: 'Bu sohbeti silmek istediğinize emin misiniz?',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteChat(chatId);
+          if (currentChatId === chatId) {
+            setCurrentChatId(null);
+          }
+          await loadChats();
+        } catch (error) {
+          console.error('Delete chat error:', error);
+        }
+      }
+    });
+  };
+
+  const handleDeleteAllChats = async () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Tüm Sohbetleri Sil',
+      message: 'Tüm sohbetleri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteAllChats();
+          setCurrentChatId(null);
+          await loadChats();
+        } catch (error) {
+          console.error('Delete all chats error:', error);
+        }
+      }
+    });
   };
 
   const handleFavoriteClick = async (favorite) => {
@@ -286,19 +400,26 @@ function ChatPage() {
 
   const handleBulkDeleteChats = async () => {
     if (selectedChatIds.size === 0) {
+      // Alert dialog için state eklenebilir, şimdilik alert kullanıyoruz
       alert('Lütfen silmek istediğiniz sohbetleri seçin.');
       return;
     }
-    if (window.confirm(`${selectedChatIds.size} sohbeti silmek istediğinize emin misiniz?`)) {
-      try {
-        await deleteBulkChats(Array.from(selectedChatIds));
-        setSelectedChatIds(new Set());
-        await loadChats();
-        await handleHistorySearch(historySearchQuery); // Arama sonuçlarını güncelle
-      } catch (error) {
-        console.error('Bulk delete chats error:', error);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Sohbetleri Sil',
+      message: `${selectedChatIds.size} sohbeti silmek istediğinize emin misiniz?`,
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteBulkChats(Array.from(selectedChatIds));
+          setSelectedChatIds(new Set());
+          await loadChats();
+          await handleHistorySearch(historySearchQuery); // Arama sonuçlarını güncelle
+        } catch (error) {
+          console.error('Bulk delete chats error:', error);
+        }
       }
-    }
+    });
   };
 
   const toggleChatSelection = (chatId) => {
@@ -352,19 +473,19 @@ function ChatPage() {
   const { todayChats, weekChats, olderChats } = groupChatsByDate(chats);
 
   return (
-    <div className="bg-background-light font-display text-text-light antialiased overflow-hidden h-screen flex">
+    <div className="bg-background-light dark:bg-gray-900 font-display text-text-light dark:text-gray-100 antialiased overflow-hidden h-screen flex">
       {/* Sol Sidebar */}
-      <aside className="hidden md:flex w-[260px] flex-col h-full bg-sidebar-light border-r border-border-light flex-shrink-0 transition-all duration-300">
+      <aside className="hidden md:flex w-[260px] flex-col h-full bg-sidebar-light dark:bg-gray-800 border-r border-border-light dark:border-gray-700 flex-shrink-0 transition-all duration-300">
         <div className="flex flex-col h-full p-3 gap-2">
           {/* New Chat Butonu */}
           <button 
             onClick={handleNewChat}
-            className="flex w-full items-center gap-3 rounded-md border border-border-light px-3 py-3 text-sm font-medium text-text-light hover:bg-gray-50 transition-colors group mb-2"
+            className="flex w-full items-center gap-3 rounded-md border border-border-light dark:border-gray-700 px-3 py-3 text-sm font-medium text-text-light dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group mb-2"
           >
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
               <span className="material-symbols-outlined text-[18px]">add</span>
             </div>
-            <span>New chat</span>
+            <span>New Chat</span>
           </button>
 
           {/* Chat History */}
@@ -378,20 +499,20 @@ function ChatPage() {
                 {/* Today */}
                 {todayChats.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <h3 className="px-3 text-xs font-semibold text-text-secondary-light uppercase tracking-wider">Bugün</h3>
+                    <h3 className="px-3 text-xs font-semibold text-text-secondary-light dark:text-gray-400 uppercase tracking-wider">Bugün</h3>
                     {todayChats.map(chat => (
                       <button
                         key={chat.id}
                         onClick={() => handleChatSelect(chat.id)}
                         className={`flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors relative group text-left ${
-                          currentChatId === chat.id ? 'bg-gray-100' : 'hover:bg-gray-50'
+                          currentChatId === chat.id ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-gray-600 text-[18px]">
+                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[18px]">
                           {currentChatId === chat.id ? 'chat_bubble' : 'chat_bubble_outline'}
                         </span>
                         <div className="flex-1 overflow-hidden">
-                          <p className="truncate text-sm font-normal text-text-light">{chat.title || 'Yeni Sohbet'}</p>
+                          <p className="truncate text-sm font-normal text-text-light dark:text-gray-100">{chat.title || 'Yeni Sohbet'}</p>
                         </div>
                         <button
                           onClick={(e) => handleChatDelete(chat.id, e)}
@@ -407,16 +528,16 @@ function ChatPage() {
                 {/* Previous 7 Days */}
                 {weekChats.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <h3 className="px-3 text-xs font-semibold text-text-secondary-light uppercase tracking-wider">Son 7 Gün</h3>
+                    <h3 className="px-3 text-xs font-semibold text-text-secondary-light dark:text-gray-400 uppercase tracking-wider">Son 7 Gün</h3>
                     {weekChats.map(chat => (
                       <button
                         key={chat.id}
                         onClick={() => handleChatSelect(chat.id)}
                         className={`flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors relative group text-left ${
-                          currentChatId === chat.id ? 'bg-gray-100' : 'hover:bg-gray-50'
+                          currentChatId === chat.id ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-gray-600 text-[18px]">
+                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[18px]">
                           {currentChatId === chat.id ? 'chat_bubble' : 'chat_bubble_outline'}
                         </span>
                         <div className="flex-1 overflow-hidden">
@@ -436,16 +557,16 @@ function ChatPage() {
                 {/* Older */}
                 {olderChats.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <h3 className="px-3 text-xs font-semibold text-text-secondary-light uppercase tracking-wider">Daha Eski</h3>
+                    <h3 className="px-3 text-xs font-semibold text-text-secondary-light dark:text-gray-400 uppercase tracking-wider">Daha Eski</h3>
                     {olderChats.map(chat => (
                       <button
                         key={chat.id}
                         onClick={() => handleChatSelect(chat.id)}
                         className={`flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors relative group text-left ${
-                          currentChatId === chat.id ? 'bg-gray-100' : 'hover:bg-gray-50'
+                          currentChatId === chat.id ? 'bg-gray-100 dark:bg-gray-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-gray-600 text-[18px]">
+                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[18px]">
                           {currentChatId === chat.id ? 'chat_bubble' : 'chat_bubble_outline'}
                         </span>
                         <div className="flex-1 overflow-hidden">
@@ -463,16 +584,16 @@ function ChatPage() {
                 )}
 
                 {chats.length === 0 && (
-                  <div className="text-center py-8 text-gray-500 text-sm">
+                  <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
                     Henüz sohbet yok. Yeni bir sohbet başlatın.
                   </div>
                 )}
 
                 {chats.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-border-light">
+                  <div className="mt-4 pt-4 border-t border-border-light dark:border-gray-700">
                     <button
                       onClick={handleDeleteAllChats}
-                      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     >
                       <span className="material-symbols-outlined text-[18px]">delete_sweep</span>
                       <span>Tümünü Sil</span>
@@ -484,31 +605,31 @@ function ChatPage() {
           </div>
 
           {/* Bottom Section */}
-          <div className="border-t border-border-light pt-3 flex flex-col gap-1">
+          <div className="border-t border-border-light dark:border-gray-700 pt-3 flex flex-col gap-1">
             <button 
               onClick={() => {
                 setInitialSettingsTab(null);
                 setShowSettingsModal(true);
               }}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-3 hover:bg-gray-50 transition-colors text-left"
+              className="flex w-full items-center gap-3 rounded-md px-3 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
             >
-              <span className="material-symbols-outlined text-gray-600 text-[20px]">settings</span>
-              <span className="flex-1 text-sm font-medium text-text-light">Settings</span>
+              <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[20px]">settings</span>
+              <span className="flex-1 text-sm font-medium text-text-light dark:text-gray-100">Settings</span>
             </button>
-            <div className="flex w-full items-center gap-3 rounded-md px-3 py-3 hover:bg-gray-50 transition-colors text-left">
+            <div className="flex w-full items-center gap-3 rounded-md px-3 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left">
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-orange-600 flex items-center justify-center text-white font-bold text-xs">
                 {user?.username?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div className="flex flex-col flex-1">
-                <span className="text-sm font-bold text-text-light">{user?.username || 'Kullanıcı'}</span>
-                <span className="text-xs text-text-secondary-light">{user?.isAdmin ? 'Admin' : 'Kullanıcı'}</span>
+                <span className="text-sm font-bold text-text-light dark:text-gray-100">{user?.username || 'Kullanıcı'}</span>
+                <span className="text-xs text-text-secondary-light dark:text-gray-400">{user?.isAdmin ? 'Admin' : 'Kullanıcı'}</span>
               </div>
               <button
                 onClick={logout}
                 className="p-1 rounded transition-colors"
                 title="Çıkış Yap"
               >
-                <span className="material-symbols-outlined text-gray-600 text-[18px]">logout</span>
+                <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[18px]">logout</span>
               </button>
             </div>
           </div>
@@ -516,23 +637,23 @@ function ChatPage() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full relative min-w-0 bg-background-light">
+      <main className="flex-1 flex flex-col h-full relative min-w-0 bg-background-light dark:bg-gray-900">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between p-4 border-b border-border-light bg-sidebar-light/95 backdrop-blur sticky top-0 z-20">
-          <button className="text-gray-600 hover:text-text-light">
+        <header className="md:hidden flex items-center justify-between p-4 border-b border-border-light dark:border-gray-700 bg-sidebar-light/95 dark:bg-gray-800/95 backdrop-blur sticky top-0 z-20">
+          <button className="text-gray-600 dark:text-gray-300 hover:text-text-light dark:hover:text-gray-100">
             <span className="material-symbols-outlined">menu</span>
           </button>
-          <span className="font-bold text-text-light">Chat</span>
-          <button className="text-gray-600 hover:text-text-light">
+          <span className="font-bold text-text-light dark:text-gray-100">Chat</span>
+          <button className="text-gray-600 dark:text-gray-300 hover:text-text-light dark:hover:text-gray-100">
             <span className="material-symbols-outlined">add</span>
           </button>
         </header>
 
         {/* Chat Area */}
         <div className="flex-1 flex h-full">
-          <div className="flex-1 flex flex-col border-r border-border-light min-w-0">
+          <div className="flex-1 flex flex-col border-r border-border-light dark:border-gray-700 min-w-0">
             {/* Tabs */}
-            <div className="flex items-center justify-between border-b border-border-light px-4 py-3 bg-panel-light flex-shrink-0">
+            <div className="flex items-center justify-between border-b border-border-light dark:border-gray-700 px-4 py-3 bg-panel-light dark:bg-gray-800 flex-shrink-0">
               <div className="flex gap-2" role="tablist">
                 <button
                   aria-selected="true"
@@ -548,12 +669,26 @@ function ChatPage() {
                     setShowSettingsModal(true);
                   }}
                   aria-selected="false"
-                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-text-secondary-light hover:text-text-light hover:border-b-2 hover:border-gray-300 transition-colors"
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-text-secondary-light dark:text-gray-400 hover:text-text-light dark:hover:text-gray-100 hover:border-b-2 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
                   role="tab"
                 >
                   <span className="material-symbols-outlined text-[18px]">history</span>
                   Geçmiş
                 </button>
+              </div>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={toggleDarkMode}
+                  className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
+                >
+                  {isDarkMode ? (
+                    <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[18px]">light_mode</span>
+                  ) : (
+                    <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[18px]">dark_mode</span>
+                  )}
+                </button>
+                <img src={metricAILogo} alt="Metric AI" className="h-8 w-auto" />
               </div>
             </div>
 
@@ -572,78 +707,93 @@ function ChatPage() {
       </main>
 
       {/* Right Sidebar */}
-      <aside className="hidden xl:flex w-[320px] flex-col h-full bg-sidebar-light border-l border-border-light flex-shrink-0 transition-all duration-300 p-4 gap-4 overflow-y-auto">
+      <aside className="hidden xl:flex w-[320px] flex-col h-full bg-sidebar-light dark:bg-gray-800 border-l border-border-light dark:border-gray-700 flex-shrink-0 transition-all duration-300 p-4 gap-4 overflow-y-auto">
         {/* Quick Actions */}
         <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-bold text-text-light flex items-center gap-2">
-            <span className="material-symbols-outlined text-gray-600 text-[20px]">bolt</span>
+          <h3 className="text-sm font-bold text-text-light dark:text-gray-100 flex items-center gap-2">
+            <span className="material-symbols-outlined text-gray-600 dark:text-gray-300 text-[20px]">bolt</span>
             Quick Actions
           </h3>
           <div className="grid grid-cols-2 gap-2">
-            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-text-secondary-light">
-              <span className="material-symbols-outlined text-[20px] mb-1 text-primary">edit</span>
-              Özet Çıkar
+            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light dark:border-gray-700 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-sm text-text-secondary-light dark:text-gray-300">
+              <span className="material-symbols-outlined text-[20px] mb-1 text-primary">query_stats</span>
+              Run TopN Query
             </button>
-            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-text-secondary-light">
-              <span className="material-symbols-outlined text-[20px] mb-1 text-primary">add_notes</span>
-              Anahtar Noktalar
+            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light dark:border-gray-700 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-sm text-text-secondary-light dark:text-gray-300">
+              <span className="material-symbols-outlined text-[20px] mb-1 text-primary">lightbulb</span>
+              Tips
             </button>
-            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-text-secondary-light">
+            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light dark:border-gray-700 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-sm text-text-secondary-light dark:text-gray-300">
               <span className="material-symbols-outlined text-[20px] mb-1 text-primary">download</span>
               Export
             </button>
-            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light bg-gray-50 hover:bg-gray-100 transition-colors text-sm text-text-secondary-light">
-              <span className="material-symbols-outlined text-[20px] mb-1 text-primary">share</span>
-              Paylaş
+            <button className="flex flex-col items-center justify-center p-3 rounded-md border border-border-light dark:border-gray-700 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors text-sm text-text-secondary-light dark:text-gray-300">
+              <span className="material-symbols-outlined text-[20px] mb-1 text-primary">bar_chart</span>
+              Statistics
             </button>
           </div>
         </div>
 
         {/* Favoriler */}
-        <div className="border-t border-border-light pt-6 flex flex-col gap-3 mt-6">
+        <div className="border-t border-border-light dark:border-gray-700 pt-6 flex flex-col gap-3 mt-6">
           <button
             onClick={() => {
               setInitialSettingsTab('favorites');
               setShowSettingsModal(true);
             }}
-            className="text-sm font-bold text-text-light flex items-center gap-2 hover:text-primary transition-colors cursor-pointer"
+            className="text-sm font-bold text-text-light dark:text-gray-100 flex items-center gap-2 hover:text-primary transition-colors cursor-pointer"
           >
-            <span className="material-symbols-outlined text-gray-600 text-[20px]">star</span>
-            Favoriler
+            <FaRankingStar className="text-gray-600 dark:text-gray-300 text-[20px]" />
+            Favorites
           </button>
-          <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto">
-            {favorites.slice(0, 3).map(fav => (
+          <div className="flex flex-col gap-2">
+            {favorites.slice(0, 10).map(fav => (
               <div
                 key={fav.id}
-                className="flex items-start gap-2 p-2 rounded-md border border-border-light bg-gray-50 hover:bg-gray-100 transition-colors group relative cursor-pointer"
-                onClick={() => handleFavoriteClick(fav)}
+                className="flex items-start gap-2 p-2 rounded-md border border-border-light dark:border-gray-700 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors group relative"
               >
-                <span className="material-symbols-outlined text-yellow-500 text-[14px] flex-shrink-0 mt-0.5">star</span>
-                <div className="flex-1 overflow-hidden min-w-0">
-                  <p className="truncate text-xs font-medium text-text-light">{fav.content.substring(0, 45)}...</p>
-                  {fav.favoritedAt && (
-                    <p className="text-[10px] text-text-secondary-light mt-0.5 truncate">
-                      {new Date(fav.favoritedAt).toLocaleDateString('tr-TR', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
-                  )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDialog({
+                      isOpen: true,
+                      title: 'Favori Kaldır',
+                      message: 'Bu favoriyi kaldırmak istediğinize emin misiniz?',
+                      type: 'danger',
+                      onConfirm: async () => {
+                        try {
+                          await removeFromFavorites(fav.id);
+                          await loadFavorites(100, 0, '');
+                        } catch (error) {
+                          console.error('Remove favorite error:', error);
+                        }
+                      }
+                    });
+                  }}
+                  className="text-red-600 hover:text-red-700 flex-shrink-0 mt-0.5 transition-colors"
+                  title="Favoriyi Kaldır"
+                >
+                  <MdPlaylistRemove className="text-[14px]" />
+                </button>
+                <div 
+                  className="flex-1 overflow-hidden min-w-0 cursor-pointer"
+                  onClick={() => handleFavoriteClick(fav)}
+                  title={fav.content}
+                >
+                  <p className="truncate text-xs font-medium text-text-light dark:text-gray-100">{fav.content}</p>
                 </div>
               </div>
             ))}
-            {favorites.length > 3 && (
+            {favorites.length > 10 && (
               <button
                 onClick={handleOpenFavoritesModal}
                 className="text-xs text-primary hover:underline text-center py-2"
               >
-                {favorites.length - 3} favori daha...
+                {favorites.length - 10} favori daha...
               </button>
             )}
             {favorites.length === 0 && (
-              <div className="text-center py-4 text-gray-500 text-xs">
+              <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-xs">
                 Henüz favori yok.
               </div>
             )}
@@ -718,11 +868,23 @@ function ChatPage() {
                     </button>
                   )}
                   <button
-                    onClick={async () => {
-                      if (window.confirm('Tüm sohbetleri silmek istediğinize emin misiniz?')) {
-                        await handleDeleteAllChats();
-                        setShowHistoryModal(false);
-                      }
+                    onClick={() => {
+                      setConfirmDialog({
+                        isOpen: true,
+                        title: 'Tüm Sohbetleri Sil',
+                        message: 'Tüm sohbetleri silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
+                        type: 'danger',
+                        onConfirm: async () => {
+                          try {
+                            await deleteAllChats();
+                            setCurrentChatId(null);
+                            await loadChats();
+                            setShowHistoryModal(false);
+                          } catch (error) {
+                            console.error('Delete all chats error:', error);
+                          }
+                        }
+                      });
                     }}
                     className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
                   >
@@ -1036,7 +1198,7 @@ function ChatPage() {
                         className="flex-1 text-left"
                       >
                         <div className="flex items-start gap-2">
-                          <span className="material-symbols-outlined text-yellow-500 text-[20px] flex-shrink-0 mt-0.5">star</span>
+                          <TiStarFullOutline className="text-primary text-[20px] flex-shrink-0 mt-0.5" />
                           <div className="flex-1">
                             <p className="text-sm font-medium text-text-light break-words">{fav.content}</p>
                             {fav.favoritedAt && (
@@ -1110,9 +1272,24 @@ function ChatPage() {
             setShowSettingsModal(false);
             setInitialSettingsTab(null);
           }}
+          onDataChanged={async () => {
+            // Settings'te veri değiştiğinde ChatPage'deki verileri yenile
+            await loadChats();
+            await loadFavorites(100, 0, '');
+          }}
           initialTab={initialSettingsTab}
         />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, type: 'warning' })}
+        onConfirm={confirmDialog.onConfirm || (() => {})}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+      />
     </div>
   );
 }

@@ -5,12 +5,16 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { sendMessage, executeVropsDirectRequest, analyzePerformance, getChat, addToFavorites, removeFromFavorites, getFavorites, getVropsToken } from '../services/api';
 import { VscVmRunning } from 'react-icons/vsc';
+import { GoFileCode, GoCopy, GoSync } from 'react-icons/go';
+import { BsStars } from 'react-icons/bs';
+import monitoringLogo from '../monitoring-logo.png';
 import VropsDataTable from './VropsDataTable';
 import AlertFilters from './filters/AlertFilters';
 import MetricTable from './MetricTable';
 import MetricChart from './MetricChart';
 import LatestStatsTable from './LatestStatsTable';
 import StatKeysTable from './StatKeysTable';
+import TopNStatsTable from './TopNStatsTable';
 import ResourceLinkModal from './ResourceLinkModal';
 import PerformanceAnalysisView from './PerformanceAnalysisView';
 
@@ -26,6 +30,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
   const executeMessageTimeoutRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true); // Kullanıcı scroll yaptıysa false olacak
+  const inputRef = useRef(null); // Input textarea referansı
   
   // API görünümü state'leri
   const [showApiView, setShowApiView] = useState(false);
@@ -46,18 +51,25 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
   // ChatId değiştiğinde mesajları yükle
   useEffect(() => {
     if (chatId) {
-      setCurrentChatId(chatId);
-      loadChatMessages(chatId);
+      // Eğer currentChatId zaten aynıysa loadChatMessages çağırma (mesajlar zaten yüklü)
+      if (currentChatId !== chatId) {
+        setCurrentChatId(chatId);
+        loadChatMessages(chatId);
+        // Yeni chat açıldığında input'u temizle
+        setInputMessage('');
+      }
     } else {
       setMessages([]);
       setCurrentChatId(null);
+      // Chat yoksa input'u temizle
+      setInputMessage('');
     }
-  }, [chatId]);
+  }, [chatId, currentChatId]);
 
   // executeMessage prop'u değiştiğinde mesajı input alanına yaz
   useEffect(() => {
     // executeMessage null olduğunda bir şey yapma
-    if (!executeMessage) {
+    if (executeMessage === null || executeMessage === undefined) {
       return;
     }
 
@@ -65,19 +77,43 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
     const trimmedMessage = executeMessage.trim();
     if (trimmedMessage) {
       setInputMessage(trimmedMessage);
-      // Input alanına focus yap
-      setTimeout(() => {
-        const inputElement = document.querySelector('textarea[placeholder*="Mesaj"]') || 
-                           document.querySelector('input[placeholder*="Mesaj"]');
+    }
+    
+    // Input alanına focus yap - ref kullanarak daha güvenilir
+    // Boş string durumunda da focus yap (sadece focus için kullanılıyor)
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        // Cursor'ı sona taşı
+        if (trimmedMessage && inputRef.current.setSelectionRange) {
+          inputRef.current.setSelectionRange(trimmedMessage.length, trimmedMessage.length);
+        } else if (trimmedMessage && inputRef.current.createTextRange) {
+          // IE için fallback
+          const range = inputRef.current.createTextRange();
+          range.collapse(false);
+          range.select();
+        }
+      } else {
+        // Fallback: ref yoksa selector kullan
+        const inputElement = document.querySelector('textarea[placeholder*="Talebinizi"]') || 
+                           document.querySelector('textarea[placeholder*="Mesaj"]') ||
+                           document.querySelector('input[placeholder*="Talebinizi"]') ||
+                           document.querySelector('input[placeholder*="Mesaj"]') ||
+                           document.querySelector('textarea');
         if (inputElement) {
           inputElement.focus();
           // Cursor'ı sona taşı
-          if (inputElement.setSelectionRange) {
+          if (trimmedMessage && inputElement.setSelectionRange) {
             inputElement.setSelectionRange(trimmedMessage.length, trimmedMessage.length);
+          } else if (trimmedMessage && inputElement.createTextRange) {
+            // IE için fallback
+            const range = inputElement.createTextRange();
+            range.collapse(false);
+            range.select();
           }
         }
-      }, 100);
-    }
+      }
+    }, 200);
 
     // executeMessage'ı temizle (bir sonraki değişiklik için)
     setTimeout(() => {
@@ -107,6 +143,20 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
     try {
       const response = await getChat(chatIdToLoad);
       if (response.success && response.chat.messages) {
+        // Mevcut mesajlardaki performanceValuesData'ları koru (eğer varsa)
+        const existingMessagesMap = new Map();
+        messages.forEach(msg => {
+          if (msg.performanceValuesData || msg.performanceValuesComment) {
+            existingMessagesMap.set(msg.id, {
+              performanceValuesData: msg.performanceValuesData,
+              performanceValuesComment: msg.performanceValuesComment,
+              dataType: msg.dataType,
+              parsedData: msg.parsedData,
+              vropsRequest: msg.vropsRequest
+            });
+          }
+        });
+        
         const formattedMessages = response.chat.messages.map(msg => {
           // Mesaj içeriğinden vropsRequest'i parse etmeye çalış (eğer backend'den gelmediyse)
           let vropsRequest = null;
@@ -139,6 +189,9 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
             }
           }
           
+          // Mevcut mesajdan performanceValuesData'yı al (eğer varsa)
+          const existingData = existingMessagesMap.get(msg.id);
+          
           return {
             id: msg.id,
             type: msg.role === 'user' ? 'user' : 'system',
@@ -146,7 +199,11 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
             timestamp: new Date(msg.createdAt),
             questionModelId: msg.questionModelId,
             responseModelId: msg.responseModelId,
-            vropsRequest: vropsRequest // Parse edilen vropsRequest'i ekle
+            vropsRequest: existingData?.vropsRequest || msg.vropsRequest || vropsRequest, // Önce mevcut, sonra backend'den gelen, sonra parse edilen
+            parsedData: existingData?.parsedData || msg.parsedData, // Önce mevcut, sonra backend'den gelen
+            dataType: existingData?.dataType || msg.dataType, // Önce mevcut, sonra backend'den gelen
+            performanceValuesData: existingData?.performanceValuesData || msg.performanceValuesData, // Önce mevcut, sonra backend'den gelen
+            performanceValuesComment: existingData?.performanceValuesComment || msg.performanceValuesComment // Önce mevcut, sonra backend'den gelen
           };
         });
         setMessages(formattedMessages);
@@ -157,12 +214,18 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
   };
 
   // Yeni mesaj geldiğinde scroll'u en alta kaydır (sadece kullanıcı en alttaysa)
-  const scrollToBottom = () => {
-    if (!shouldAutoScrollRef.current) return; // Kullanıcı scroll yaptıysa scroll yapma
+  const scrollToBottom = (force = false) => {
+    if (!force && !shouldAutoScrollRef.current) return; // Kullanıcı scroll yaptıysa scroll yapma
     
     // DOM güncellenmesini beklemek için setTimeout kullan
     setTimeout(() => {
-      if (shouldAutoScrollRef.current && messagesEndRef.current) {
+      if ((force || shouldAutoScrollRef.current) && messagesContainerRef.current) {
+        const container = messagesContainerRef.current;
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth'
+        });
+      } else if ((force || shouldAutoScrollRef.current) && messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
       }
     }, 100);
@@ -191,6 +254,11 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
     if (isLoading) {
       // Yeni mesaj gönderilirken otomatik scroll'u aktif et
       shouldAutoScrollRef.current = true;
+    } else {
+      // Cevap geldiğinde (isLoading false olduğunda) scroll yap
+      setTimeout(() => {
+        scrollToBottom(true);
+      }, 200);
     }
   }, [isLoading]);
 
@@ -283,8 +351,15 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
       timestamp: new Date()
     };
     
+    // Mesaj gönderildiğinde otomatik scroll'u aktif et ve scroll yap
+    shouldAutoScrollRef.current = true;
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoading(true);
+    
+    // Mesaj eklendikten sonra scroll'u tetikle (force ile)
+    setTimeout(() => {
+      scrollToBottom(true);
+    }, 50);
 
     try {
       // Performans analizi gerektiren soru mu kontrol et
@@ -348,7 +423,44 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
       
       // Eğer parse edilmiş vROPS verisi varsa, mesaj objesine ekle
       let systemMessageContent = response.gptResponse;
-      if (response.parsedData && response.dataType) {
+      
+      // Performans değerleri için özel kontrol
+      console.log('[FRONTEND] Performance values check:', {
+        hasPerformanceValuesData: !!response.performanceValuesData,
+        performanceValuesDataLength: response.performanceValuesData?.length,
+        hasPerformanceValuesComment: !!response.performanceValuesComment,
+        performanceValuesComment: response.performanceValuesComment
+      });
+      
+      if (response.performanceValuesData && response.performanceValuesData.length > 0) {
+        systemMessageContent = response.gptResponse || `Performans değerleri başarıyla alındı. ${response.performanceValuesData.length} metrik aşağıda gösteriliyor.`;
+        const systemMessage = {
+          id: response.assistantMessageId || Date.now() + 1,
+          type: 'system',
+          content: systemMessageContent,
+          timestamp: new Date(),
+          dataType: 'performanceValues', // Performans değerleri için özel dataType
+          performanceValuesData: response.performanceValuesData, // Performans değerleri verisi
+          performanceValuesComment: response.performanceValuesComment // ChatGPT yorumu
+        };
+        console.log('[FRONTEND] System message created with performance values:', {
+          hasPerformanceValuesData: !!systemMessage.performanceValuesData,
+          performanceValuesDataLength: systemMessage.performanceValuesData?.length,
+          hasPerformanceValuesComment: !!systemMessage.performanceValuesComment,
+          performanceValuesComment: systemMessage.performanceValuesComment,
+          fullSystemMessage: systemMessage
+        });
+        setMessages(prev => {
+          const newMessages = [...prev, systemMessage];
+          console.log('[FRONTEND] Messages after adding performance values message:', {
+            totalMessages: newMessages.length,
+            lastMessage: newMessages[newMessages.length - 1],
+            hasPerformanceValuesData: !!newMessages[newMessages.length - 1].performanceValuesData,
+            lastMessageDataType: newMessages[newMessages.length - 1].dataType
+          });
+          return newMessages;
+        });
+      } else if (response.parsedData && response.dataType) {
         // Her veri tipi için özel mesaj
             if (response.dataType === 'alerts') {
               systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount} alert aşağıda gösteriliyor.`;
@@ -358,6 +470,11 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
               systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount} resource aşağıda gösteriliyor.`;
             } else if (response.dataType === 'properties') {
               systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount} property aşağıda gösteriliyor.`;
+            } else if (response.dataType === 'symptoms') {
+              systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount || 0} semptom aşağıda gösteriliyor.`;
+            } else if (response.dataType === 'topn') {
+              const sortOrderText = response.parsedData.sortOrder === 'DESCENDING' ? 'En fazla' : 'En az';
+              systemMessageContent = `vROPS verileri başarıyla alındı. ${sortOrderText} ${response.parsedData.totalCount} VM aşağıda gösteriliyor.`;
             } else {
               systemMessageContent = `vROPS verileri başarıyla alındı. Veriler aşağıda gösteriliyor.`;
             }
@@ -370,7 +487,9 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           timestamp: new Date(),
           parsedData: response.parsedData, // Parse edilmiş veriyi mesaj objesine ekle
           dataType: response.dataType, // Veri tipini mesaj objesine ekle
-          vropsRequest: response.vropsRequest // API request parametrelerini ekle
+          vropsRequest: response.vropsRequest, // API request parametrelerini ekle
+          performanceValuesData: response.performanceValuesData, // Performans değerleri verisi
+          performanceValuesComment: response.performanceValuesComment // ChatGPT yorumu
         };
         setMessages(prev => [...prev, systemMessage]);
       } else if (response.gptResponse) {
@@ -380,7 +499,9 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           type: 'system',
           content: response.gptResponse,
           timestamp: new Date(),
-          vropsRequest: response.vropsRequest // API request parametrelerini ekle (varsa)
+          vropsRequest: response.vropsRequest, // API request parametrelerini ekle (varsa)
+          performanceValuesData: response.performanceValuesData, // Performans değerleri verisi
+          performanceValuesComment: response.performanceValuesComment // ChatGPT yorumu
         };
         setMessages(prev => [...prev, systemMessage]);
       }
@@ -446,6 +567,11 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount} resource aşağıda gösteriliyor.`;
         } else if (response.dataType === 'properties') {
           systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount} property aşağıda gösteriliyor.`;
+        } else if (response.dataType === 'symptoms') {
+          systemMessageContent = `vROPS verileri başarıyla alındı. ${response.parsedData.totalCount || 0} semptom aşağıda gösteriliyor.`;
+        } else if (response.dataType === 'topn') {
+          const sortOrderText = response.parsedData.sortOrder === 'DESCENDING' ? 'En fazla' : 'En az';
+          systemMessageContent = `vROPS verileri başarıyla alındı. ${sortOrderText} ${response.parsedData.totalCount} VM aşağıda gösteriliyor.`;
         } else {
           systemMessageContent = `vROPS verileri başarıyla alındı. Veriler aşağıda gösteriliyor.`;
         }
@@ -456,7 +582,9 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           content: systemMessageContent,
           timestamp: new Date(),
           parsedData: response.parsedData,
-          dataType: response.dataType
+          dataType: response.dataType,
+          performanceValuesData: response.performanceValuesData,
+          performanceValuesComment: response.performanceValuesComment
         };
         setMessages(prev => [...prev, systemMessage]);
       } else if (response.gptResponse) {
@@ -464,7 +592,9 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           id: Date.now() + 1,
           type: 'system',
           content: response.gptResponse,
-          timestamp: new Date()
+          timestamp: new Date(),
+          performanceValuesData: response.performanceValuesData, // Performans değerleri verisi
+          performanceValuesComment: response.performanceValuesComment // ChatGPT yorumu
         };
         setMessages(prev => [...prev, systemMessage]);
       }
@@ -715,8 +845,37 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
     const paramsJson = Object.keys(params).length > 0 ? JSON.stringify(params, null, 2) : '{}';
     console.log('[API VIEW] Params JSON:', paramsJson);
     
+    // Params'tan query string oluştur ve endpoint'e ekle (açılır açılmaz gelsin)
+    let fullEndpoint = endpoint;
+    if (Object.keys(params).length > 0) {
+      try {
+        // Array parametrelerini düzgün handle et (örn: resourceId=[id1, id2] -> resourceId=id1&resourceId=id2)
+        const queryParams = new URLSearchParams();
+        Object.keys(params).forEach(key => {
+          const value = params[key];
+          if (Array.isArray(value)) {
+            // Array ise her elemanı ayrı parametre olarak ekle
+            value.forEach(item => {
+              queryParams.append(key, item);
+            });
+          } else if (value !== null && value !== undefined && value !== '') {
+            // Normal değer
+            queryParams.append(key, value);
+          }
+        });
+        const queryString = queryParams.toString();
+        if (queryString) {
+          fullEndpoint = `${endpoint}?${queryString}`;
+        }
+        console.log('[API VIEW] Query string oluşturuldu:', queryString);
+      } catch (e) {
+        console.error('[API VIEW] Query string oluşturulurken hata:', e);
+        // Hata olsa bile devam et
+      }
+    }
+    
     const apiRequestData = {
-      endpoint: endpoint, // Query string olmadan temiz endpoint
+      endpoint: fullEndpoint, // Query string ile birlikte endpoint
       method: method,
       headers: JSON.stringify(headersObj, null, 2),
       params: paramsJson,
@@ -919,7 +1078,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
       <div 
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto scroll-smooth w-full bg-gray-50"
+        className="flex-1 min-h-0 overflow-y-auto scroll-smooth w-full bg-gray-50 dark:bg-gray-900"
       >
         <div className="flex flex-col w-full px-4 py-8 md:py-12 gap-8">
           {messages.length === 0 ? (
@@ -927,7 +1086,54 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           ) : (
             // Mesajlar listelendiği alan
             <>
-              {messages.map((message, index) => (
+              {(() => {
+                console.log('[FRONTEND RENDER] Total messages:', messages.length);
+                messages.forEach((msg, idx) => {
+                  if (msg.performanceValuesData || msg.dataType === 'performanceValues') {
+                    console.log(`[FRONTEND RENDER] Message ${idx} with performance values:`, {
+                      messageId: msg.id,
+                      dataType: msg.dataType,
+                      hasPerformanceValuesData: !!msg.performanceValuesData,
+                      performanceValuesDataLength: msg.performanceValuesData?.length,
+                      hasPerformanceValuesComment: !!msg.performanceValuesComment,
+                      fullMessage: msg
+                    });
+                  }
+                });
+                return null;
+              })()}
+              {messages.map((message, index) => {
+                // Debug: Performans değerleri için log
+                if (message.performanceValuesData || message.dataType === 'performanceValues') {
+                  console.log('[FRONTEND RENDER] Message with performance values:', {
+                    messageId: message.id,
+                    dataType: message.dataType,
+                    hasPerformanceValuesData: !!message.performanceValuesData,
+                    performanceValuesDataLength: message.performanceValuesData?.length,
+                    hasPerformanceValuesComment: !!message.performanceValuesComment,
+                    performanceValuesComment: message.performanceValuesComment?.substring(0, 100),
+                    fullMessage: message
+                  });
+                }
+                
+                // Render koşulu kontrolü
+                const shouldRenderData = (message.parsedData && message.dataType) || 
+                                       (message.performanceAnalysis && message.dataType === 'performanceAnalysis') || 
+                                       (message.performanceValuesData && message.performanceValuesData.length > 0) || 
+                                       message.dataType === 'performanceValues';
+                
+                if (message.performanceValuesData || message.dataType === 'performanceValues') {
+                  console.log('[FRONTEND RENDER] Render check:', {
+                    messageId: message.id,
+                    shouldRenderData,
+                    hasParsedData: !!message.parsedData,
+                    dataType: message.dataType,
+                    hasPerformanceValuesData: !!message.performanceValuesData,
+                    performanceValuesDataLength: message.performanceValuesData?.length
+                  });
+                }
+                
+                return (
                 <div key={message.id} className="w-full animate-fade-in" style={{ animationDelay: `${index * 0.1}s` }}>
                   {/* Mesaj balonu */}
                   <div className={`flex w-full ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -943,13 +1149,15 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                   </div>
                 
                 {/* Bu mesajın parsedData'sını hemen altında göster - Tam genişlikte */}
-                {((message.parsedData && message.dataType) || (message.performanceAnalysis && message.dataType === 'performanceAnalysis')) && (
+                {shouldRenderData && (
                   <div className="w-full mt-4">
+                    {/* Debug: Render edildiğini göster */}
+                    {message.performanceValuesData && console.log('[FRONTEND RENDER] Rendering performance values container for message:', message.id)}
                     {message.dataType === 'alerts' && message.parsedData.alerts && (
-                      <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                      <div className="w-full mt-6 border-t border-gray-200 dark:border-gray-700 pt-6 px-4">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">Alert Görselleştirme</h3>
-                          <p className="text-sm text-gray-600">
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Alert Görselleştirme</h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
                             Toplam {message.parsedData.totalCount} alert bulundu
                           </p>
                           
@@ -1009,12 +1217,12 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                     {message.dataType === 'metrics' && message.parsedData.metrics && (
                       <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">Metric Görselleştirme</h3>
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Metric Görselleştirme</h3>
                           {message.parsedData.statKey && (
-                            <p className="text-sm text-gray-600">
-                              StatKey: <span className="font-mono text-gray-800">{message.parsedData.statKey}</span>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              StatKey: <span className="font-mono text-gray-800 dark:text-gray-200">{message.parsedData.statKey}</span>
                               {message.parsedData.resourceId && (
-                                <span className="ml-2">Resource ID: <span className="font-mono text-gray-800">{message.parsedData.resourceId}</span></span>
+                                <span className="ml-2">Resource ID: <span className="font-mono text-gray-800 dark:text-gray-200">{message.parsedData.resourceId}</span></span>
                               )}
                             </p>
                           )}
@@ -1033,7 +1241,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                     {message.dataType === 'latestStats' && message.parsedData.resources && (
                       <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">Latest Stats Görselleştirme</h3>
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Latest Stats Görselleştirme</h3>
                           <p className="text-sm text-gray-600">
                             {message.parsedData.totalCount} resource için {message.parsedData.totalStats} stat gösteriliyor
                           </p>
@@ -1047,7 +1255,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                     {message.dataType === 'statKeys' && message.parsedData.statKeys && (
                       <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">StatKeys Görselleştirme</h3>
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">StatKeys Görselleştirme</h3>
                           <p className="text-sm text-gray-600">
                             {message.parsedData.totalCount} statKey bulundu
                           </p>
@@ -1061,7 +1269,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                     {message.dataType === 'resourceDetail' && message.parsedData.resourceId && (
                       <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">Resource Detayları</h3>
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Resource Detayları</h3>
                           <p className="text-sm text-gray-600">
                             {message.parsedData.name || 'Resource'} bilgileri
                           </p>
@@ -1069,6 +1277,105 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
 
                         {/* Resource Detail - Tüm Detaylar */}
                         <ResourceDetailView data={message.parsedData} />
+                      </div>
+                    )}
+
+                    {message.dataType === 'symptoms' && message.parsedData.symptoms && (
+                      <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                        <div className="mb-4">
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Semptomlar</h3>
+                          <p className="text-sm text-gray-600">
+                            {message.parsedData.totalCount || 0} semptom bulundu
+                          </p>
+                        </div>
+
+                        {/* Symptoms View */}
+                        <SymptomsView data={message.parsedData} />
+                      </div>
+                    )}
+
+                    {message.dataType === 'topn' && message.parsedData.vms && (
+                      <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                        <div className="mb-4">
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">TopN Stats - En Fazla/Az Kaynak Tüketen VM'ler</h3>
+                          <p className="text-sm text-gray-600">
+                            {message.parsedData.sortOrder === 'DESCENDING' ? 'En Fazla' : 'En Az'} {message.parsedData.totalCount} VM gösteriliyor
+                            {message.parsedData.statKeys && message.parsedData.statKeys.length > 0 && (
+                              <span className="ml-2">
+                                (Metrikler: {message.parsedData.statKeys.join(', ')})
+                              </span>
+                            )}
+                          </p>
+                        </div>
+
+                        {/* TopN Stats Tablo */}
+                        <TopNStatsTable data={message.parsedData} />
+                      </div>
+                    )}
+
+                    {(() => {
+                      const shouldShow = message.dataType === 'performanceValues' || (message.performanceValuesData && message.performanceValuesData.length > 0);
+                      if (message.performanceValuesData || message.dataType === 'performanceValues') {
+                        console.log('[FRONTEND RENDER] Performance values table render check:', {
+                          messageId: message.id,
+                          shouldShow,
+                          dataType: message.dataType,
+                          hasPerformanceValuesData: !!message.performanceValuesData,
+                          performanceValuesDataLength: message.performanceValuesData?.length,
+                          performanceValuesData: message.performanceValuesData
+                        });
+                      }
+                      return shouldShow;
+                    })() && (
+                      <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                        <div className="mb-4">
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Performans Değerleri</h3>
+                          <p className="text-sm text-gray-600">
+                            {message.performanceValuesData?.length || 0} performans metriği gösteriliyor
+                          </p>
+                        </div>
+
+                        {/* Performans Değerleri Tablosu */}
+                        {message.performanceValuesData && message.performanceValuesData.length > 0 && (
+                          <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
+                            <table className="w-full">
+                              <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Başlık</th>
+                                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">StatKey</th>
+                                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Değer</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200">
+                                {message.performanceValuesData.map((stat, index) => {
+                                  // Title'dan birimi çıkar (parantez içindeki kısım)
+                                  const unitMatch = stat.title.match(/\(([^)]+)\)/);
+                                  const unit = unitMatch ? unitMatch[1] : '';
+                                  
+                                  return (
+                                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 font-medium">{stat.title}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 font-mono">{stat.statKey}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                                        {stat.value !== null && stat.value !== undefined 
+                                          ? `${stat.value.toFixed(2)}${unit ? ` (${unit})` : ''}` 
+                                          : 'N/A'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {/* ChatGPT Yorumu */}
+                        {message.performanceValuesComment && (
+                          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                            <h4 className="text-sm font-semibold text-blue-900 mb-2">Analiz Yorumu</h4>
+                            <p className="text-sm text-blue-800 whitespace-pre-wrap">{message.performanceValuesComment}</p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1107,7 +1414,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                     {message.dataType === 'performanceAnalysis' && message.performanceAnalysis && (
                       <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                         <div className="mb-4">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-2">Performans Analizi</h3>
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Performans Analizi</h3>
                           <p className="text-sm text-gray-600">
                             {message.performanceAnalysis.vmName || 'VM'} için detaylı performans analizi
                           </p>
@@ -1120,12 +1427,13 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                   </div>
                 )}
                 </div>
-              ))}
+                );
+              })}
 
             {/* Yükleniyor durumu - ChatGPT typing indicator benzeri */}
             {isLoading && (
-              <div className="flex items-center text-gray-500 gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700"></div>
+              <div className="flex items-center text-gray-500 dark:text-white gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700 dark:border-white"></div>
                 <span className="text-xs">İsteğiniz işleniyor...</span>
               </div>
             )}
@@ -1145,6 +1453,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
         handleSendMessage={handleSendMessage}
         handleKeyPress={handleKeyPress}
         isLoading={isLoading}
+        inputRef={inputRef}
       />
           </div>
           
@@ -1293,7 +1602,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
           <div 
             ref={messagesContainerRef}
             onScroll={handleScroll}
-            className="flex-1 min-h-0 overflow-y-auto scroll-smooth w-full bg-gray-50"
+            className="flex-1 min-h-0 overflow-y-auto scroll-smooth w-full bg-gray-50 dark:bg-gray-900"
           >
             <div className="flex flex-col w-full px-4 py-8 md:py-12 gap-8">
               {messages.length === 0 ? (
@@ -1317,7 +1626,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                       </div>
                     
                       {/* Bu mesajın parsedData'sını hemen altında göster - Tam genişlikte */}
-                      {((message.parsedData && message.dataType) || (message.performanceAnalysis && message.dataType === 'performanceAnalysis')) && (
+                      {((message.parsedData && message.dataType) || (message.performanceAnalysis && message.dataType === 'performanceAnalysis') || (message.performanceValuesData && message.performanceValuesData.length > 0) || message.dataType === 'performanceValues') && (
                         <div className="w-full mt-4">
                           {message.dataType === 'alerts' && message.parsedData.alerts && (
                             <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
@@ -1407,7 +1716,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                           {message.dataType === 'latestStats' && message.parsedData.resources && (
                             <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                               <div className="mb-4">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">Latest Stats Görselleştirme</h3>
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Latest Stats Görselleştirme</h3>
                                 <p className="text-sm text-gray-600">
                                   {message.parsedData.totalCount} resource için {message.parsedData.totalStats} stat gösteriliyor
                                 </p>
@@ -1421,7 +1730,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                           {message.dataType === 'statKeys' && message.parsedData.statKeys && (
                             <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                               <div className="mb-4">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">StatKeys Görselleştirme</h3>
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">StatKeys Görselleştirme</h3>
                                 <p className="text-sm text-gray-600">
                                   {message.parsedData.totalCount} statKey bulundu
                                 </p>
@@ -1435,7 +1744,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                           {message.dataType === 'resourceDetail' && message.parsedData.resourceId && (
                             <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                               <div className="mb-4">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">Resource Detayları</h3>
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Resource Detayları</h3>
                                 <p className="text-sm text-gray-600">
                                   {message.parsedData.name || 'Resource'} bilgileri
                                 </p>
@@ -1443,6 +1752,92 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
 
                               {/* Resource Detail - Tüm Detaylar */}
                               <ResourceDetailView data={message.parsedData} />
+                            </div>
+                          )}
+
+                          {message.dataType === 'symptoms' && message.parsedData.symptoms && (
+                            <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                              <div className="mb-4">
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Semptomlar</h3>
+                                <p className="text-sm text-gray-600">
+                                  {message.parsedData.totalCount || 0} semptom bulundu
+                                </p>
+                              </div>
+
+                              {/* Symptoms View */}
+                              <SymptomsView data={message.parsedData} />
+                            </div>
+                          )}
+
+                          {message.dataType === 'topn' && message.parsedData.vms && (
+                            <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                              <div className="mb-4">
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">TopN Stats - En Fazla/Az Kaynak Tüketen VM'ler</h3>
+                                <p className="text-sm text-gray-600">
+                                  {message.parsedData.sortOrder === 'DESCENDING' ? 'En Fazla' : 'En Az'} {message.parsedData.totalCount} VM gösteriliyor
+                                  {message.parsedData.statKeys && message.parsedData.statKeys.length > 0 && (
+                                    <span className="ml-2">
+                                      (Metrikler: {message.parsedData.statKeys.join(', ')})
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+
+                              {/* TopN Stats Tablo */}
+                              <TopNStatsTable data={message.parsedData} />
+                            </div>
+                          )}
+
+                          {(message.dataType === 'performanceValues' || (message.performanceValuesData && message.performanceValuesData.length > 0)) && (
+                            <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
+                              <div className="mb-4">
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Performans Değerleri</h3>
+                                <p className="text-sm text-gray-600">
+                                  {message.performanceValuesData?.length || 0} performans metriği gösteriliyor
+                                </p>
+                              </div>
+
+                              {/* Performans Değerleri Tablosu */}
+                              {message.performanceValuesData && message.performanceValuesData.length > 0 && (
+                                <div className="bg-white border border-gray-200 rounded-md overflow-hidden">
+                                  <table className="w-full">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                      <tr>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Başlık</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">StatKey</th>
+                                        <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Değer</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                      {message.performanceValuesData.map((stat, index) => {
+                                        // Title'dan birimi çıkar (parantez içindeki kısım)
+                                        const unitMatch = stat.title.match(/\(([^)]+)\)/);
+                                        const unit = unitMatch ? unitMatch[1] : '';
+                                        
+                                        return (
+                                          <tr key={index} className="hover:bg-gray-50">
+                                            <td className="px-4 py-3 text-sm text-gray-900 font-medium">{stat.title}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-600 font-mono">{stat.statKey}</td>
+                                            <td className="px-4 py-3 text-sm text-gray-900">
+                                              {stat.value !== null && stat.value !== undefined 
+                                                ? `${stat.value.toFixed(2)}${unit ? ` (${unit})` : ''}` 
+                                                : 'N/A'}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+
+                              {/* ChatGPT Yorumu */}
+                              {message.performanceValuesComment && (
+                                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                                  <h4 className="text-sm font-semibold text-blue-900 mb-2">Analiz Yorumu</h4>
+                                  <p className="text-sm text-blue-800 whitespace-pre-wrap">{message.performanceValuesComment}</p>
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -1481,7 +1876,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
                           {message.dataType === 'performanceAnalysis' && message.performanceAnalysis && (
                             <div className="w-full mt-6 border-t border-gray-200 pt-6 px-4">
                               <div className="mb-4">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2">Performans Analizi</h3>
+                                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">Performans Analizi</h3>
                                 <p className="text-sm text-gray-600">
                                   {message.performanceAnalysis.vmName || 'VM'} için detaylı performans analizi
                                 </p>
@@ -1498,8 +1893,8 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
 
                   {/* Yükleniyor durumu - ChatGPT typing indicator benzeri */}
                   {isLoading && (
-                    <div className="flex items-center text-gray-500 gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700"></div>
+                    <div className="flex items-center text-gray-500 dark:text-white gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700 dark:border-white"></div>
                       <span className="text-xs">İsteğiniz işleniyor...</span>
                     </div>
                   )}
@@ -1519,6 +1914,7 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
             handleSendMessage={handleSendMessage}
             handleKeyPress={handleKeyPress}
             isLoading={isLoading}
+            inputRef={inputRef}
           />
         </>
       )}
@@ -1527,19 +1923,20 @@ function ChatInterface({ chatId, onChatCreated, onFavoriteAdded, executeMessage 
 }
 
 // Mesaj input komponenti - Mesaj yazma alanı
-function MessageInput({ inputMessage, setInputMessage, handleSendMessage, handleKeyPress, isLoading }) {
+function MessageInput({ inputMessage, setInputMessage, handleSendMessage, handleKeyPress, isLoading, inputRef }) {
   return (
-    <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-background-light via-background-light to-transparent pt-10 pb-6 px-4">
+    <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-background-light dark:from-gray-900 via-background-light dark:via-gray-900 to-transparent pt-10 pb-6 px-4">
       <div className="w-full flex flex-col gap-2 px-4">
         {/* Input alanı - tam oval kenarlı */}
-        <div className="relative w-full rounded-xl bg-input-light shadow-lg border border-border-light transition-all duration-200 py-2 px-6 outline-none focus-within:outline-none">
+        <div className="relative w-full rounded-xl bg-input-light dark:bg-gray-800 shadow-lg border border-border-light dark:border-gray-700 transition-all duration-200 py-2 px-6 outline-none focus-within:outline-none">
           <textarea
+            ref={inputRef}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Talebinizi yazınız..."
             rows={1}
-            className="w-full mt-1 bg-transparent text-text-light placeholder-text-secondary-light border-0 focus:ring-0 focus:outline-none resize-none py-1 pl-2 pr-12 max-h-[200px] overflow-y-auto font-body text-base rounded-xl scrollbar-hide"
+            className="w-full mt-1 bg-transparent text-text-light dark:text-gray-100 placeholder-text-secondary-light dark:placeholder-gray-400 border-0 focus:ring-0 focus:outline-none resize-none py-1 pl-2 pr-12 max-h-[200px] overflow-y-auto font-body text-base rounded-xl scrollbar-hide"
             style={{ minHeight: '32px' }}
             disabled={isLoading}
           />
@@ -1555,7 +1952,7 @@ function MessageInput({ inputMessage, setInputMessage, handleSendMessage, handle
           </div>
         </div>
         <div className="text-center">
-          <p className="text-xs text-text-secondary-light font-light mt-6">
+          <p className="text-xs text-text-secondary-light dark:text-gray-400 font-light mt-6">
             Metric AI can make mistakes. Consider checking important information.
           </p>
         </div>
@@ -1569,6 +1966,10 @@ function EmptyStateMessage() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-500 min-h-[60vh]">
       <div className="w-full max-w-3xl mx-auto px-4">
+        {/* Logo */}
+        <div className="mb-6 flex justify-center">
+          <img src={monitoringLogo} alt="Monitoring Logo" className="h-32 w-auto" />
+        </div>
         {/* Ana karşılama metni */}
         <p className="text-2xl sm:text-2xl font-bold mb-3 text-text-light mb-10">
           VMware Altyapınızın Operasyonel Durumunu Görüntüleyin
@@ -1610,21 +2011,30 @@ function EmptyStateMessage() {
 function MessageBubble({ message, favoriteMessageIds, onToggleFavorite, onFavoriteAdded, messages, onRetry, onOpenApiView }) {
   const isUser = message.type === 'user';
   const isError = message.type === 'error';
+  const [copySuccess, setCopySuccess] = useState(false);
 
   // Copy fonksiyonu - mesaj içeriğini panoya kopyalar
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
-      // Kullanıcıya geri bildirim verebiliriz (opsiyonel)
+      setCopySuccess(true);
+      // 2 saniye sonra geri bildirimi kaldır
+      setTimeout(() => setCopySuccess(false), 2000);
     } catch (err) {
       console.error('Kopyalama hatası:', err);
       // Fallback: eski yöntem
-      const textArea = document.createElement('textarea');
-      textArea.value = message.content;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = message.content;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (fallbackErr) {
+        console.error('Fallback kopyalama hatası:', fallbackErr);
+      }
     }
   };
 
@@ -1657,7 +2067,7 @@ function MessageBubble({ message, favoriteMessageIds, onToggleFavorite, onFavori
     return (
       <div className="flex flex-col items-end w-full gap-1 px-4">
         <div className="flex items-center gap-2 mb-1 px-1">
-          <span className="text-xs font-medium text-text-secondary-light">You</span>
+          <span className="text-xs font-medium text-text-secondary-light dark:text-gray-400">You</span>
           {onToggleFavorite && (
             <button
               onClick={() => onToggleFavorite(message.id, isFavorite)}
@@ -1677,11 +2087,28 @@ function MessageBubble({ message, favoriteMessageIds, onToggleFavorite, onFavori
         <div className="rounded-lg rounded-tr-sm bg-primary px-5 py-3.5 text-white shadow-md max-w-[90%]">
           <p className="text-base font-normal leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-        {message.timestamp && (
-          <div className="text-xs text-text-secondary-light px-1">
-            {message.timestamp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-          </div>
-        )}
+        <div className="flex items-center gap-2 px-1">
+          {message.timestamp && (
+            <div className="text-xs text-text-secondary-light">
+              {message.timestamp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
+          <button
+            onClick={handleCopy}
+            className={`p-1 rounded transition-colors ${
+              copySuccess 
+                ? 'text-green-500' 
+                : 'text-gray-400 hover:text-gray-600'
+            }`}
+            title={copySuccess ? 'Kopyalandı!' : 'Soruyu kopyala'}
+          >
+            {copySuccess ? (
+              <span className="material-symbols-outlined text-[16px]">check</span>
+            ) : (
+              <GoCopy className="w-[16px] h-[16px]" />
+            )}
+          </button>
+        </div>
       </div>
     );
   }
@@ -1691,36 +2118,47 @@ function MessageBubble({ message, favoriteMessageIds, onToggleFavorite, onFavori
     <div className="flex gap-4 w-full px-4">
       <div className="flex-shrink-0 mt-1">
         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center shadow-lg">
-          <span className="material-symbols-outlined text-white text-[20px]">smart_toy</span>
+          <BsStars className="text-white text-[20px]" />
         </div>
       </div>
       <div className="flex flex-col gap-2 min-w-0 flex-1 max-w-[90%]">
         <div className="flex items-baseline gap-2 px-1">
-          <span className="text-sm font-bold text-text-light">ChatGPT</span>
+          <span className="text-sm font-bold text-text-light dark:text-gray-100">Metric AI</span>
           {message.timestamp && (
-            <span className="text-xs text-text-secondary-light">
+            <span className="text-xs text-text-secondary-light dark:text-gray-400">
               {message.timestamp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
         </div>
-        <div className="text-text-light text-base leading-relaxed tracking-wide space-y-4">
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        <div className="text-text-light dark:text-gray-100 text-base leading-relaxed tracking-wide space-y-4">
+          {/* Performans değerleri varsa mesaj içeriğini gösterme, sadece tablo gösterilecek */}
+          {!(message.performanceValuesData && message.performanceValuesData.length > 0) && (
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          )}
         </div>
         {!isError && (
           <div className="flex items-center gap-2 mt-1">
             <button 
               onClick={handleCopy}
-              className="p-1.5 text-gray-500 hover:text-primary rounded-md hover:bg-gray-100 transition-colors" 
-              title="Kopyala"
+              className={`p-1.5 rounded-md hover:bg-gray-100 transition-colors ${
+                copySuccess 
+                  ? 'text-green-500' 
+                  : 'text-gray-500 hover:text-primary'
+              }`}
+              title={copySuccess ? 'Kopyalandı!' : 'Kopyala'}
             >
-              <span className="material-symbols-outlined text-[18px]">content_copy</span>
+              {copySuccess ? (
+                <span className="material-symbols-outlined text-[18px]">check</span>
+              ) : (
+                <GoCopy className="w-[18px] h-[18px]" />
+              )}
             </button>
             <button 
               onClick={handleRetry}
               className="p-1.5 text-gray-500 hover:text-primary rounded-md hover:bg-gray-100 transition-colors" 
               title="Tekrar Dene"
             >
-              <span className="material-symbols-outlined text-[18px]">refresh</span>
+              <GoSync className="w-[18px] h-[18px]" />
             </button>
             {onOpenApiView && (
               <button 
@@ -1728,7 +2166,7 @@ function MessageBubble({ message, favoriteMessageIds, onToggleFavorite, onFavori
                 className="p-1.5 text-gray-500 hover:text-primary rounded-md hover:bg-gray-100 transition-colors" 
                 title="API Görünümü"
               >
-                <span className="material-symbols-outlined text-[18px]">api</span>
+                <GoFileCode className="w-[18px] h-[18px]" />
               </button>
             )}
           </div>
@@ -3018,6 +3456,266 @@ function PropertiesView({ data }) {
               onClick={() => handlePageChange(totalPages)}
               disabled={currentPage === totalPages}
               className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Son
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Symptoms görünümü komponenti - ResourceLinkModal'dan kopyalandı
+function SymptomsView({ data }) {
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Sıralama fonksiyonu
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  // Sıralanmış veri
+  const sortedData = useMemo(() => {
+    let result = [...(data.symptoms || [])];
+    
+    if (sortConfig.key) {
+      result = result.sort((a, b) => {
+        const aVal = a[sortConfig.key];
+        const bVal = b[sortConfig.key];
+        
+        if (aVal === bVal) return 0;
+        
+        const comparison = aVal > bVal ? 1 : -1;
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
+      });
+    }
+    
+    return result;
+  }, [data.symptoms, sortConfig]);
+
+  // Sayfalama hesaplamaları
+  const totalPages = Math.ceil(sortedData.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedData = sortedData.slice(startIndex, endIndex);
+
+  // Sayfa değiştiğinde scroll'u yukarı kaydır
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Symptom kritiklik rengini belirle
+  const getCriticalityColor = (criticality) => {
+    switch (criticality) {
+      case 'CRITICAL': return 'bg-red-100 text-red-800 border-red-300';
+      case 'WARNING': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'INFORMATION': return 'bg-blue-100 text-blue-800 border-blue-300';
+      default: return 'bg-gray-100 text-gray-800 border-gray-300';
+    }
+  };
+
+  // Timestamp formatla
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp);
+    return date.toLocaleString('tr-TR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
+  if (!data || !data.symptoms || data.symptoms.length === 0) {
+    return (
+      <div className="text-center py-12 bg-white border border-gray-200 rounded-md">
+        <div className="text-gray-400 mb-2">
+          <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <p className="text-gray-600 font-semibold">Symptom bulunamadı</p>
+        <p className="text-sm text-gray-500 mt-1">Bu resource için symptom yok</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Özet Bilgiler */}
+      <div className="bg-gray-50 rounded-md p-2 border border-gray-200">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <div>
+            <div className="text-xs text-gray-600">Toplam Symptom</div>
+            <div className="text-lg font-bold text-gray-900">{data.totalCount || 0}</div>
+          </div>
+          {data.summary && (
+            <>
+              <div>
+                <div className="text-xs text-gray-600">CRITICAL</div>
+                <div className="text-base font-bold text-red-600">{data.summary.byCriticality?.CRITICAL || 0}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-600">WARNING</div>
+                <div className="text-base font-bold text-yellow-600">{data.summary.byCriticality?.WARNING || 0}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-600">INFORMATION</div>
+                <div className="text-base font-bold text-blue-600">{data.summary.byCriticality?.INFORMATION || 0}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-600">KPI</div>
+                <div className="text-base font-bold text-gray-900">{data.summary.byKpi?.kpi || 0}</div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Sayfa Başına Kayıt Sayısı */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-600">Sayfa başına:</label>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="px-2 py-1 border border-gray-300 rounded-md text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={500}>500</option>
+            <option value={1000}>1000</option>
+          </select>
+        </div>
+        <div className="text-xs text-gray-600">
+          {startIndex + 1}-{Math.min(endIndex, sortedData.length)} / {sortedData.length} kayıt
+        </div>
+      </div>
+
+      {/* Symptom Listesi */}
+      <div className="space-y-2">
+        {paginatedData.map((symptom, index) => (
+          <div key={symptom.id || index} className="bg-white border border-gray-200 rounded-md p-2 shadow-sm">
+            {/* Symptom Header */}
+            <div className="flex items-start justify-between mb-2 pb-2 border-b border-gray-200">
+              <div className="flex-1">
+                <h4 className="text-sm font-bold text-gray-900">{symptom.symptomDefinitionId || 'N/A'}</h4>
+                {symptom.statKey && (
+                  <p className="text-xs text-gray-500 mt-0.5 font-mono">StatKey: {symptom.statKey}</p>
+                )}
+                {symptom.resourceId && (
+                  <p className="text-[10px] text-gray-400 mt-0.5 font-mono">Resource ID: {symptom.resourceId}</p>
+                )}
+              </div>
+              <div className="flex gap-1">
+                {/* Symptom Criticality */}
+                <span className={`px-1.5 py-0.5 rounded text-xs font-semibold border ${getCriticalityColor(symptom.symptomCriticality)}`}>
+                  {symptom.symptomCriticality || 'N/A'}
+                </span>
+                {/* KPI Badge */}
+                {symptom.kpi && (
+                  <span className="px-1.5 py-0.5 rounded text-xs font-semibold border bg-purple-100 text-purple-800 border-purple-300">
+                    KPI
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Symptom Detayları */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-2">
+              <div>
+                <div className="text-gray-600 text-[10px] mb-0.5">Başlangıç</div>
+                <div className="text-gray-900">{formatTimestamp(symptom.startTimeUTC)}</div>
+              </div>
+              {symptom.cancelTimeUTC && symptom.cancelTimeUTC > 0 && (
+                <div>
+                  <div className="text-gray-600 text-[10px] mb-0.5">İptal</div>
+                  <div className="text-gray-900">{formatTimestamp(symptom.cancelTimeUTC)}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-gray-600 text-[10px] mb-0.5">Güncelleme</div>
+                <div className="text-gray-900">{formatTimestamp(symptom.updateTimeUTC)}</div>
+              </div>
+              {symptom.id && (
+                <div>
+                  <div className="text-gray-600 text-[10px] mb-0.5">Symptom ID</div>
+                  <div className="text-gray-900 font-mono text-[10px] break-all">{symptom.id}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Message */}
+            {symptom.message && (
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <div className="text-[10px] text-gray-600 mb-0.5">Mesaj:</div>
+                <div className="text-xs text-gray-900 bg-gray-50 p-1.5 rounded-md border border-gray-200 font-mono break-all">
+                  {symptom.message.replace(/&gt;/g, '>').replace(/&lt;/g, '<')}
+                </div>
+              </div>
+            )}
+
+            {/* Fault Devices */}
+            {symptom.faultDevices && symptom.faultDevices.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-gray-200">
+                <div className="text-[10px] text-gray-600 mb-0.5">Fault Devices:</div>
+                <div className="text-xs text-gray-900">
+                  {symptom.faultDevices.map((device, idx) => (
+                    <span key={idx} className="inline-block px-1.5 py-0.5 bg-gray-100 rounded text-[10px] mr-1 mb-0.5">
+                      {device}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Sayfalama Kontrolleri */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-gray-600">
+            Sayfa {currentPage} / {totalPages}
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              İlk
+            </button>
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Önceki
+            </button>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Sonraki
+            </button>
+            <button
+              onClick={() => handlePageChange(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Son
             </button>
